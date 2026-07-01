@@ -423,6 +423,34 @@ textarea:focus {
   list-style: none;
 }
 
+.document-list {
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-top: 4px;
+  padding-top: 2px;
+  padding-right: 6px;
+  padding-bottom: 2px;
+  mask-image: linear-gradient(to bottom, transparent 0, black 10px, black calc(100% - 10px), transparent 100%);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(103, 80, 245, 0.42) rgba(255, 255, 255, 0.3);
+}
+
+.document-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.document-list::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.document-list::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--brand), var(--cyan));
+}
+
 .document-list li {
   display: flex;
   align-items: center;
