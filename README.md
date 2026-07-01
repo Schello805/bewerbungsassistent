@@ -7,6 +7,7 @@ Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bl
 - Stammdaten lokal speichern
 - Lebenslauf, Zeugnisse und weitere Unterlagen hochladen
 - mehrere Dateien gleichzeitig hochladen
+- sichtbares Upload-Feedback mit Fortschrittsanimation
 - Stellenanzeige oder Link einfügen
 - Anschreiben mit Absenderdaten, Empfängerblock, Betreff und Schlussformel erstellen
 - Anschreiben direkt bearbeiten

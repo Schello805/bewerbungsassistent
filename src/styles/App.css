@@ -12,8 +12,11 @@
   --line: #e6ded1;
   --brand: #6750f5;
   --brand-dark: #513bd9;
+  --brand-soft: rgba(103, 80, 245, 0.12);
+  --cyan: #2fb7e8;
   --danger: #b42318;
   --shadow: 0 18px 60px rgba(23, 32, 51, 0.1);
+  --shadow-hover: 0 24px 80px rgba(23, 32, 51, 0.14);
   --radius-lg: 26px;
 }
 
@@ -69,6 +72,7 @@ code {
   border-bottom: 1px solid rgba(230, 222, 209, 0.85);
   background: rgba(255, 253, 248, 0.9);
   backdrop-filter: blur(18px);
+  box-shadow: 0 10px 30px rgba(23, 32, 51, 0.04);
 }
 
 .topbar,
@@ -117,6 +121,13 @@ code {
   height: 38px;
   border-radius: 11px;
   object-fit: cover;
+  box-shadow: 0 10px 24px rgba(47, 183, 232, 0.2);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.brand:hover img {
+  transform: rotate(-2deg) scale(1.04);
+  box-shadow: 0 14px 34px rgba(47, 183, 232, 0.32);
 }
 
 .app-main {
@@ -138,12 +149,37 @@ code {
 .panel,
 .editor-layout,
 .legal-card {
+  position: relative;
+  overflow: hidden;
   border: 1px solid rgba(230, 222, 209, 0.95);
   border-radius: var(--radius-lg);
   background: rgba(255, 253, 248, 0.88);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
   padding: 24px;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.panel::before,
+.editor-layout::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.64), transparent 34%);
+  opacity: 0.82;
+}
+
+.panel > *,
+.editor-layout > * {
+  position: relative;
+}
+
+.panel:hover,
+.editor-layout:hover {
+  transform: translateY(-2px);
+  border-color: rgba(103, 80, 245, 0.18);
+  box-shadow: var(--shadow-hover);
 }
 
 .create-panel {
@@ -234,9 +270,27 @@ textarea:focus {
 .document-list button:hover { transform: translateY(-1px); }
 
 .primary {
+  position: relative;
+  overflow: hidden;
   background: var(--brand);
   color: white;
   box-shadow: 0 12px 30px rgba(103, 80, 245, 0.26);
+}
+
+.primary::after {
+  content: "";
+  position: absolute;
+  top: -80%;
+  left: -40%;
+  width: 36%;
+  height: 260%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.36), transparent);
+  transform: rotate(18deg) translateX(-180%);
+  transition: transform 420ms ease;
+}
+
+.primary:hover::after {
+  transform: rotate(18deg) translateX(520%);
 }
 
 .primary:hover { background: var(--brand-dark); }
@@ -340,6 +394,65 @@ textarea:focus {
   color: var(--danger);
 }
 
+.upload-panel.is-uploading {
+  border-color: rgba(47, 183, 232, 0.42);
+  box-shadow: 0 22px 70px rgba(47, 183, 232, 0.18);
+}
+
+.upload-button {
+  min-width: 178px;
+}
+
+.upload-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.upload-button:hover .upload-icon-wrap {
+  animation: icon-float 650ms ease both;
+}
+
+.is-uploading .upload-icon-wrap {
+  animation: upload-pulse 900ms ease-in-out infinite;
+}
+
+.upload-progress {
+  position: relative;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  margin: -2px 0 14px;
+  background: #ebe6dc;
+}
+
+.upload-progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand), var(--cyan), var(--brand));
+  box-shadow: 0 0 24px rgba(47, 183, 232, 0.5);
+  animation: upload-scan 1.2s ease-in-out infinite;
+}
+
+.editor-toolbar button svg,
+.panel-header button svg,
+.button svg {
+  transition: transform 180ms ease;
+}
+
+.editor-toolbar button:hover svg,
+.panel-header button:hover svg,
+.button:hover svg {
+  transform: translateY(-1px) scale(1.08);
+}
+
 .editor-section {
   scroll-margin-top: 92px;
 }
@@ -394,6 +507,40 @@ textarea:focus {
 .saved-letters span {
   overflow-wrap: anywhere;
   font-weight: 800;
+}
+
+@keyframes upload-scan {
+  0% { transform: translateX(-110%); }
+  55% { transform: translateX(90%); }
+  100% { transform: translateX(270%); }
+}
+
+@keyframes upload-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(103, 80, 245, 0.24);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 8px rgba(103, 80, 245, 0);
+  }
+}
+
+@keyframes icon-float {
+  0% { transform: translateY(0); }
+  45% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 .app-footer {

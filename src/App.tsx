@@ -87,6 +87,7 @@ function ApplicationShell() {
   const [draft, setDraft] = useState('');
   const [documentStatus, setDocumentStatus] = useState('Dokumente werden geladen ...');
   const [letterStatus, setLetterStatus] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const [voice, setVoice] = useState(voiceOptions[0]);
   const [provider, setProvider] = useState(providerOptions[0]);
   const [apiKey, setApiKey] = useState('');
@@ -166,6 +167,7 @@ function ApplicationShell() {
 
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
+    setIsUploading(true);
     setDocumentStatus(files.length === 1 ? `${files[0].name} wird gespeichert ...` : `${files.length} Dateien werden gespeichert ...`);
 
     try {
@@ -178,6 +180,7 @@ function ApplicationShell() {
     } catch (error) {
       setDocumentStatus(error instanceof Error ? error.message : 'Dateien konnten nicht gespeichert werden.');
     } finally {
+      setIsUploading(false);
       event.target.value = '';
     }
   }
@@ -305,15 +308,23 @@ function ApplicationShell() {
         </section>
 
         <section className="section slim-grid">
-          <article className="panel">
+          <article className={isUploading ? 'panel upload-panel is-uploading' : 'panel upload-panel'}>
             <div className="panel-header">
               <div>
                 <h2>Unterlagen</h2>
                 <p className="document-status">{documentStatus}</p>
               </div>
-              <button type="button" onClick={() => fileInputRef.current?.click()}><FileUp size={16} /> Dateien auswählen</button>
+              <button type="button" className="upload-button" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                <span className="upload-icon-wrap"><FileUp size={16} /></span>
+                {isUploading ? 'Upload läuft ...' : 'Dateien auswählen'}
+              </button>
               <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md,.rtf" multiple onChange={uploadDocument} className="visually-hidden" />
             </div>
+            {isUploading && (
+              <div className="upload-progress" aria-label="Upload läuft">
+                <span />
+              </div>
+            )}
             <ul className="document-list">
               {documents.map((document) => (
                 <li key={document.id}>
