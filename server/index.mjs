@@ -106,10 +106,14 @@ app.get('/api/profile', async (_request, response, next) => {
 
 app.get('/api/settings', (_request, response, next) => {
   try {
+    const apiKeys = getSetting('apiKeys', {});
     response.json({
       personalData: getSetting('personalData', null),
       provider: getSetting('provider', null),
       voice: getSetting('voice', null),
+      apiKeyProviders: Object.entries(apiKeys)
+        .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+        .map(([key]) => key),
     });
   } catch (error) {
     next(error);
@@ -126,6 +130,21 @@ app.put('/api/settings', (request, response, next) => {
     }
     if ('voice' in request.body) {
       setSetting('voice', request.body.voice);
+    }
+    if ('apiKey' in request.body) {
+      const apiKeys = getSetting('apiKeys', {});
+      const provider = typeof request.body.provider === 'string' && request.body.provider.trim()
+        ? request.body.provider.trim()
+        : getSetting('provider', 'OpenAI');
+      const apiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
+
+      if (apiKey.length > 0) {
+        apiKeys[provider] = apiKey;
+      } else {
+        delete apiKeys[provider];
+      }
+
+      setSetting('apiKeys', apiKeys);
     }
     response.json({ ok: true });
   } catch (error) {
@@ -297,7 +316,8 @@ app.post('/api/fetch-job', async (request, response, next) => {
 app.post('/api/generate-letter', async (request, response, next) => {
   try {
     const provider = typeof request.body.provider === 'string' ? request.body.provider : 'OpenAI';
-    const apiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
+    const requestApiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
+    const apiKey = requestApiKey || getProviderApiKey(provider);
     const prompt = buildAiPrompt({
       personalData: request.body.personalData,
       jobInput: request.body.jobInput,
@@ -375,6 +395,12 @@ function setSetting(key, value) {
       value = excluded.value,
       updated_at = CURRENT_TIMESTAMP
   `).run({ key, value: JSON.stringify(value) });
+}
+
+function getProviderApiKey(provider) {
+  const apiKeys = getSetting('apiKeys', {});
+  const apiKey = apiKeys?.[provider];
+  return typeof apiKey === 'string' ? apiKey.trim() : '';
 }
 
 async function fetchJobPosting(url) {

@@ -98,11 +98,13 @@ function ApplicationShell() {
   const [voice, setVoice] = useState(voiceOptions[0]);
   const [provider, setProvider] = useState(providerOptions[0]);
   const [apiKey, setApiKey] = useState('');
+  const [apiKeyProviders, setApiKeyProviders] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const wordCount = useMemo(() => draft.trim().split(/\s+/).filter(Boolean).length, [draft]);
   const jobDetails = useMemo(() => extractJobDetails(jobInput), [jobInput]);
   const canCreateLetter = jobInput.trim().length > 8 && personalData.name.trim().length > 0;
+  const hasApiKey = apiKey.trim().length > 0 || apiKeyProviders.includes(provider);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -147,6 +149,7 @@ function ApplicationShell() {
         personalData?: PersonalData | null;
         provider?: string | null;
         voice?: string | null;
+        apiKeyProviders?: string[];
       };
       if (data.personalData) {
         setPersonalData({ ...defaultPersonalData, ...data.personalData });
@@ -157,6 +160,7 @@ function ApplicationShell() {
       if (data.voice && voiceOptions.includes(data.voice)) {
         setVoice(data.voice);
       }
+      setApiKeyProviders(Array.isArray(data.apiKeyProviders) ? data.apiKeyProviders : []);
     } catch {
       // Settings are optional; defaults keep the app usable.
     }
@@ -169,10 +173,15 @@ function ApplicationShell() {
   }, [loadDocuments, loadLetters, loadSettings]);
 
   useEffect(() => {
-    setApiKey(localStorage.getItem(getApiKeyStorageKey(provider)) ?? '');
-  }, [provider]);
+    const legacyApiKey = localStorage.getItem(getApiKeyStorageKey(provider));
+    if (!legacyApiKey || apiKeyProviders.includes(provider)) return;
 
-  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string }) {
+    setApiKeyProviders((current) => current.includes(provider) ? current : [...current, provider]);
+    void saveSettings({ provider, apiKey: legacyApiKey });
+    localStorage.removeItem(getApiKeyStorageKey(provider));
+  }, [apiKeyProviders, provider]);
+
+  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string }) {
     await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -190,6 +199,7 @@ function ApplicationShell() {
 
   function updateProvider(value: string) {
     setProvider(value);
+    setApiKey('');
     void saveSettings({ provider: value });
   }
 
@@ -200,14 +210,11 @@ function ApplicationShell() {
 
   function updateApiKey(value: string) {
     setApiKey(value);
-    const storageKey = getApiKeyStorageKey(provider);
-
-    if (value.trim().length === 0) {
-      localStorage.removeItem(storageKey);
-      return;
-    }
-
-    localStorage.setItem(storageKey, value);
+    setApiKeyProviders((current) => {
+      const next = current.filter((item) => item !== provider);
+      return value.trim().length > 0 ? [...next, provider] : next;
+    });
+    void saveSettings({ provider, apiKey: value });
   }
 
   async function uploadDocument(event: ChangeEvent<HTMLInputElement>) {
@@ -258,7 +265,7 @@ function ApplicationShell() {
       }
       const resolvedJobDetails = extractJobDetails(resolvedJobInput);
 
-      if (!apiKey.trim()) {
+      if (!hasApiKey) {
         setDraft(createDraft({ personalData, jobDetails: resolvedJobDetails, profile, voice }));
         setLetterStatus('Kein API-Key eingetragen. Lokale Vorlage erstellt.');
         return;
@@ -269,7 +276,7 @@ function ApplicationShell() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider,
-          apiKey,
+          apiKey: apiKey.trim() || undefined,
           voice,
           personalData,
           jobInput: resolvedJobInput,
@@ -474,7 +481,7 @@ function ApplicationShell() {
             <p>{jobInput.trim() ? 'Empfänger, Betreff und gewünschte Zusatzangaben werden aus Link oder Text abgeleitet.' : 'Link oder Text einfügen, danach wird das Anschreiben erstellt.'}</p>
             <div className="analysis-summary">
               <span>{documents.length} Unterlagen</span>
-              <span>{apiKey ? provider : 'Lokale Vorlage'}</span>
+              <span>{hasApiKey ? provider : 'Lokale Vorlage'}</span>
               <span>{voice}</span>
             </div>
           </aside>
@@ -565,9 +572,20 @@ function ApplicationShell() {
             </div>
             <label className="api-field">
               <span><KeyRound size={18} /> API-Key</span>
-              <input type="password" placeholder={`${provider} API-Key`} value={apiKey} onChange={(event) => updateApiKey(event.target.value)} autoComplete="off" />
+              <input
+                type="password"
+                placeholder={apiKeyProviders.includes(provider) ? `${provider} API-Key gespeichert` : `${provider} API-Key`}
+                value={apiKey}
+                onChange={(event) => updateApiKey(event.target.value)}
+                autoComplete="off"
+              />
             </label>
-            <p className="field-note">Wird nur in diesem Browser gespeichert.</p>
+            <div className="api-note-row">
+              <p className="field-note">{apiKeyProviders.includes(provider) ? 'API-Key gespeichert.' : 'API-Key eintragen, um KI zu nutzen.'}</p>
+              {apiKeyProviders.includes(provider) && (
+                <button type="button" className="text-button" onClick={() => updateApiKey('')}>Entfernen</button>
+              )}
+            </div>
           </article>
 
           <article className={isUploading ? 'panel upload-panel is-uploading' : 'panel upload-panel'}>
