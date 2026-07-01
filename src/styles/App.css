@@ -383,7 +383,7 @@ textarea:focus {
 
 .big-action {
   width: 100%;
-  margin-top: auto;
+  margin-top: 2px;
   min-height: 52px;
   font-size: 1.04rem;
 }
