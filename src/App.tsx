@@ -1,8 +1,8 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Download, FileUp, KeyRound, Link2, RefreshCw, Save, Scissors, ShieldCheck, Trash2 } from 'lucide-react';
+import { Download, FileUp, KeyRound, Link2, RefreshCw, Save, Scissors, Trash2 } from 'lucide-react';
 import { Footer } from './components/Footer';
 import { LegalPage } from './components/LegalPage';
-import { providerOptions, voiceOptions, workflowSteps } from './data/workflow';
+import { providerOptions, voiceOptions } from './data/workflow';
 import { legalPages } from './pages/legalContent';
 import './styles/App.css';
 
@@ -11,7 +11,6 @@ type UploadedDocument = {
   name: string;
   type: string;
   size?: number;
-  updatedAt?: string;
 };
 
 type SavedLetter = {
@@ -34,6 +33,40 @@ type ProfileData = {
   keywords: string[];
 };
 
+type PersonalData = {
+  name: string;
+  qualification: string;
+  email: string;
+  phone: string;
+  street: string;
+  city: string;
+  website: string;
+  location: string;
+  closingName: string;
+};
+
+type JobDetails = {
+  recipient: string;
+  contact: string;
+  address: string;
+  subject: string;
+  salutation: string;
+  company: string;
+  title: string;
+};
+
+const defaultPersonalData: PersonalData = {
+  name: 'Michael Schellenberger',
+  qualification: 'staatl. gepr. Betriebswirt',
+  email: 'Michael@Schellenberger.biz',
+  phone: '0176-80114354',
+  street: 'Ziegeleistraße 32',
+  city: '91572 Bechhofen',
+  website: 'https://michael.schellenberger.biz',
+  location: 'Bechhofen',
+  closingName: 'Michael Schellenberger',
+};
+
 function App() {
   const currentPath = window.location.pathname;
   const legalPage = legalPages[currentPath as keyof typeof legalPages];
@@ -49,19 +82,19 @@ function ApplicationShell() {
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
   const [letters, setLetters] = useState<SavedLetter[]>([]);
   const [profile, setProfile] = useState<ProfileData>({ documents: [], text: '', keywords: [] });
+  const [personalData, setPersonalData] = useState<PersonalData>(() => loadPersonalData());
+  const [jobInput, setJobInput] = useState('');
+  const [draft, setDraft] = useState('');
   const [documentStatus, setDocumentStatus] = useState('Dokumente werden geladen ...');
   const [letterStatus, setLetterStatus] = useState('');
   const [voice, setVoice] = useState(voiceOptions[0]);
   const [provider, setProvider] = useState(providerOptions[0]);
   const [apiKey, setApiKey] = useState('');
-  const [jobText, setJobText] = useState('');
-  const [confirmed, setConfirmed] = useState(false);
-  const [draft, setDraft] = useState('Sehr geehrte Damen und Herren,\n\nmit großem Interesse habe ich Ihre Ausschreibung gelesen. Besonders die Kombination aus Verantwortung, Gestaltungsspielraum und moderner Zusammenarbeit passt sehr gut zu meinem Profil.\n\nIn meinen bisherigen Stationen konnte ich vergleichbare Aufgaben strukturiert, zuverlässig und mit einem klaren Blick für Ergebnisse umsetzen. Meine Unterlagen zeigen dabei sowohl fachliche Erfahrung als auch die Fähigkeit, mich schnell in neue Themen einzuarbeiten.\n\nGerne möchte ich in einem persönlichen Gespräch zeigen, wie ich Ihr Team konkret unterstützen kann.\n\nMit freundlichen Grüßen\nMichael Schellenberger');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const analysisReady = jobText.trim().length > 40;
   const wordCount = useMemo(() => draft.trim().split(/\s+/).filter(Boolean).length, [draft]);
-  const analysis = useMemo(() => buildAnalysis(jobText, profile), [jobText, profile]);
+  const jobDetails = useMemo(() => extractJobDetails(jobInput), [jobInput]);
+  const canCreateLetter = jobInput.trim().length > 8 && personalData.name.trim().length > 0;
 
   const loadProfile = useCallback(async () => {
     try {
@@ -77,12 +110,10 @@ function ApplicationShell() {
   const loadDocuments = useCallback(async () => {
     try {
       const response = await fetch('/api/documents');
-      if (!response.ok) {
-        throw new Error('Dokumente konnten nicht geladen werden.');
-      }
+      if (!response.ok) throw new Error('Dokumente konnten nicht geladen werden.');
       const data = await response.json() as { documents: UploadedDocument[] };
       setDocuments(data.documents);
-      setDocumentStatus(data.documents.length === 0 ? 'Noch keine Dateien im Ordner datenbasis/.' : `${data.documents.length} Datei(en) im Ordner datenbasis/.`);
+      setDocumentStatus(data.documents.length === 0 ? 'Noch keine Unterlagen hochgeladen.' : `${data.documents.length} Datei(en) geladen.`);
       await loadProfile();
     } catch (error) {
       setDocumentStatus(error instanceof Error ? error.message : 'Dokumente konnten nicht geladen werden.');
@@ -109,6 +140,14 @@ function ApplicationShell() {
     setApiKey(localStorage.getItem(getApiKeyStorageKey(provider)) ?? '');
   }, [provider]);
 
+  function updatePersonalData(field: keyof PersonalData, value: string) {
+    setPersonalData((current) => {
+      const next = { ...current, [field]: value };
+      localStorage.setItem('bewerbungsassistent.personalData', JSON.stringify(next));
+      return next;
+    });
+  }
+
   function updateApiKey(value: string) {
     setApiKey(value);
     const storageKey = getApiKeyStorageKey(provider);
@@ -127,22 +166,17 @@ function ApplicationShell() {
 
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
-    setDocumentStatus(files.length === 1
-      ? `${files[0].name} wird gespeichert ...`
-      : `${files.length} Dateien werden gespeichert ...`);
+    setDocumentStatus(files.length === 1 ? `${files[0].name} wird gespeichert ...` : `${files.length} Dateien werden gespeichert ...`);
 
     try {
-      const response = await fetch('/api/documents', {
-        method: 'POST',
-        body: formData,
-      });
+      const response = await fetch('/api/documents', { method: 'POST', body: formData });
       if (!response.ok) {
         const data = await response.json() as { error?: string };
-        throw new Error(data.error ?? 'Datei konnte nicht gespeichert werden.');
+        throw new Error(data.error ?? 'Dateien konnten nicht gespeichert werden.');
       }
       await loadDocuments();
     } catch (error) {
-      setDocumentStatus(error instanceof Error ? error.message : 'Datei konnte nicht gespeichert werden.');
+      setDocumentStatus(error instanceof Error ? error.message : 'Dateien konnten nicht gespeichert werden.');
     } finally {
       event.target.value = '';
     }
@@ -151,9 +185,7 @@ function ApplicationShell() {
   async function removeDocument(id: string) {
     setDocumentStatus(`${id} wird gelöscht ...`);
     try {
-      const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(`/api/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
       if (!response.ok) {
         const data = await response.json() as { error?: string };
         throw new Error(data.error ?? 'Datei konnte nicht gelöscht werden.');
@@ -164,16 +196,26 @@ function ApplicationShell() {
     }
   }
 
+  function createLetter() {
+    setDraft(createDraft({ personalData, jobDetails, profile, voice }));
+    window.setTimeout(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
+
+  function shortenDraft() {
+    setDraft((current) => current.split('\n').filter((line) => line.trim().length > 0).slice(0, 18).join('\n\n'));
+  }
+
+  function varyDraft() {
+    setDraft((current) => `${current}\n\nAlternative Formulierung:\nIch bringe eine strukturierte, praxisnahe Arbeitsweise mit und kann mich schnell in neue Aufgaben einarbeiten.`);
+  }
+
   async function saveFinalLetter() {
     setLetterStatus('Fertige Version wird gespeichert ...');
     try {
       const response = await fetch('/api/letters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'anschreiben',
-          text: draft,
-        }),
+        body: JSON.stringify({ title: jobDetails.subject || 'anschreiben', text: draft }),
       });
       if (!response.ok) {
         const data = await response.json() as { error?: string };
@@ -186,23 +228,6 @@ function ApplicationShell() {
     }
   }
 
-  function confirmAnalysisAndCreateDraft() {
-    setConfirmed(true);
-    setDraft(createDraftFromProfile({
-      jobText,
-      profile,
-      voice,
-    }));
-  }
-
-  function shortenDraft() {
-    setDraft((current) => current.split('\n').filter((line) => line.trim().length > 0).slice(0, 5).join('\n\n'));
-  }
-
-  function varyDraft() {
-    setDraft((current) => `${current}\n\nAlternative Formulierungsidee: Ich verbinde strukturierte Arbeitsweise mit echter Motivation, mich schnell in Ihr Umfeld einzubringen und messbare Ergebnisse zu liefern.`);
-  }
-
   async function downloadDocx() {
     const { Document, Packer, Paragraph, TextRun } = await import('docx');
     const doc = new Document({
@@ -210,7 +235,7 @@ function ApplicationShell() {
         properties: {},
         children: draft.split('\n').map((line) => new Paragraph({
           children: [new TextRun(line || ' ')],
-          spacing: { after: 180 },
+          spacing: { after: 160 },
         })),
       }],
     });
@@ -218,7 +243,7 @@ function ApplicationShell() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'anschreiben-entwurf.docx';
+    link.download = `${slugify(jobDetails.subject || 'anschreiben')}.docx`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -229,92 +254,66 @@ function ApplicationShell() {
 
   return (
     <div className="app-shell">
-      <header className="hero">
+      <header className="app-header">
         <nav className="topbar" aria-label="Hauptnavigation">
-            <a href="/" className="brand">
-              <img src="/logo-bewerbungsassistent.png" alt="" />
-              Bewerbungsassistent
-            </a>
+          <a href="/" className="brand">
+            <img src="/logo-bewerbungsassistent.png" alt="" />
+            Bewerbungsassistent
+          </a>
           <div>
-            <a href="#workflow">Workflow</a>
-            <a href="#editor">Editor</a>
-            <a href="#export">Export</a>
+            <a href="#create">Erstellen</a>
+            <a href="#stammdaten">Stammdaten</a>
+            <a href="#editor">Bearbeiten</a>
           </div>
         </nav>
-        <section className="hero-grid">
-          <div>
-            <p className="eyebrow">Lokale App</p>
-            <h1>Bewerbung vorbereiten</h1>
-            <p className="lead">Unterlagen ablegen, Stellenanzeige einfügen, Textentwurf bearbeiten.</p>
-            <div className="hero-actions">
-              <a href="#matching" className="button primary">Stellenanzeige einfügen</a>
-              <a href="#datenbasis" className="button secondary">Datenbasis einrichten</a>
-            </div>
-          </div>
-          <aside className="status-card">
-            <ShieldCheck size={34} />
-            <h2>Lokal gedacht</h2>
-            <p>Basisdokumente liegen im Ordner <code>datenbasis/</code>. API-Keys werden vom Nutzer eingetragen.</p>
-          </aside>
-        </section>
       </header>
 
-      <main>
-        <section id="workflow" className="section">
-          <div className="section-heading">
-            <p className="eyebrow">Workflow</p>
-            <h2>Die wichtigsten Schritte</h2>
-          </div>
-          <div className="workflow-grid">
-            {workflowSteps.map((step) => (
-              <article className="workflow-card" key={step.title}>
-                <step.icon size={24} />
-                <h3>{step.title}</h3>
-                <p>{step.text}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section id="datenbasis" className="section split-section">
-          <div>
-            <p className="eyebrow">Phase A</p>
-            <h2>Datenbasis & Stimme</h2>
-            <p>Lege Lebenslauf, Zeugnisse, Zertifikate und dein Master-Profil ab. Die Dateien werden lokal im Ordner <code>datenbasis/</code> gespeichert.</p>
-            <div className="settings-grid">
-              <label>
-                KI-Anbieter
-                <select value={provider} onChange={(event) => setProvider(event.target.value)}>
-                  {providerOptions.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              </label>
-              <label>
-                Gewünschte Stimme
-                <select value={voice} onChange={(event) => setVoice(event.target.value)}>
-                  {voiceOptions.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              </label>
-            </div>
-            <label className="api-field">
-              <KeyRound size={18} /> API-Key lokal eintragen
-              <input
-                type="password"
-                placeholder={`${provider} API-Key`}
-                aria-label="API-Key"
-                value={apiKey}
-                onChange={(event) => updateApiKey(event.target.value)}
-                autoComplete="off"
+      <main className="app-main">
+        <section id="create" className="create-grid">
+          <article className="panel create-panel">
+            <p className="eyebrow">Anschreiben</p>
+            <h1>Link oder Stellenanzeige einfügen</h1>
+            <label>
+              Stellenanzeige / Link
+              <textarea
+                value={jobInput}
+                onChange={(event) => setJobInput(event.target.value)}
+                placeholder="Link oder Text der Stellenanzeige hier einfügen ..."
               />
             </label>
-            <p className="field-note">Der API-Key wird nur lokal in diesem Browser gespeichert.</p>
-          </div>
-            <div className="panel">
+            <button type="button" className="button primary big-action" onClick={createLetter} disabled={!canCreateLetter}>
+              Anschreiben erstellen
+            </button>
+          </article>
+
+          <aside id="stammdaten" className="panel master-data-panel">
+            <div className="panel-header compact-header">
+              <h2>Stammdaten</h2>
+              <span>lokal gespeichert</span>
+            </div>
+            <div className="form-grid compact-form">
+              <TextField label="Name" value={personalData.name} onChange={(value) => updatePersonalData('name', value)} />
+              <TextField label="Qualifikation" value={personalData.qualification} onChange={(value) => updatePersonalData('qualification', value)} />
+              <TextField label="E-Mail" value={personalData.email} onChange={(value) => updatePersonalData('email', value)} />
+              <TextField label="Telefon" value={personalData.phone} onChange={(value) => updatePersonalData('phone', value)} />
+              <TextField label="Straße" value={personalData.street} onChange={(value) => updatePersonalData('street', value)} />
+              <TextField label="PLZ Ort" value={personalData.city} onChange={(value) => updatePersonalData('city', value)} />
+              <TextField label="Website" value={personalData.website} onChange={(value) => updatePersonalData('website', value)} />
+              <TextField label="Absendeort" value={personalData.location} onChange={(value) => updatePersonalData('location', value)} />
+            </div>
+          </aside>
+        </section>
+
+        <section className="section slim-grid">
+          <article className="panel">
             <div className="panel-header">
-              <h3>Dokumente</h3>
+              <div>
+                <h2>Unterlagen</h2>
+                <p className="document-status">{documentStatus}</p>
+              </div>
               <button type="button" onClick={() => fileInputRef.current?.click()}><FileUp size={16} /> Dateien auswählen</button>
               <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md,.rtf" multiple onChange={uploadDocument} className="visually-hidden" />
             </div>
-            <p className="document-status">{documentStatus}</p>
             <ul className="document-list">
               {documents.map((document) => (
                 <li key={document.id}>
@@ -327,53 +326,55 @@ function ApplicationShell() {
                 </li>
               ))}
             </ul>
-          </div>
-        </section>
+          </article>
 
-        <section id="matching" className="section split-section reversed">
-          <div className="panel job-panel">
-            <label>
-              Jobanzeige oder Link einfügen
-              <textarea value={jobText} onChange={(event) => setJobText(event.target.value)} placeholder="Kopiere hier die Stellenanzeige hinein oder füge später einen Link ein ..." />
-            </label>
-            <button type="button" className="button primary" disabled={!analysisReady}>Analysieren</button>
-          </div>
-          <div>
-            <p className="eyebrow">Phase B</p>
-            <h2>Matching vor Generierung</h2>
-            <p>Die App zeigt zuerst eine kurze Übersicht. Erst nach Bestätigung wird ein Textentwurf erstellt.</p>
-            <div className="analysis-grid">
-              <AnalysisList title="Das fordert die Stelle" items={analysis.requirements} />
-              <AnalysisList title="Aus deinen Unterlagen" items={analysis.matches} />
-              <AnalysisList title="Hinweise" items={analysis.gaps} warning />
+          <article className="panel">
+            <h2>KI</h2>
+            <div className="settings-grid">
+              <label>
+                Anbieter
+                <select value={provider} onChange={(event) => setProvider(event.target.value)}>
+                  {providerOptions.map((option) => <option key={option}>{option}</option>)}
+                </select>
+              </label>
+              <label>
+                Stil
+                <select value={voice} onChange={(event) => setVoice(event.target.value)}>
+                  {voiceOptions.map((option) => <option key={option}>{option}</option>)}
+                </select>
+              </label>
             </div>
-            <button type="button" className="button secondary" onClick={confirmAnalysisAndCreateDraft} disabled={!analysisReady}>
-              <CheckCircle2 size={18} /> Analyse bestätigen und Entwurf erstellen
-            </button>
-          </div>
+            <label className="api-field">
+              <KeyRound size={18} /> API-Key
+              <input type="password" placeholder={`${provider} API-Key`} value={apiKey} onChange={(event) => updateApiKey(event.target.value)} autoComplete="off" />
+            </label>
+            <p className="field-note">Wird nur lokal in diesem Browser gespeichert.</p>
+          </article>
         </section>
 
         <section id="editor" className="section editor-section">
-          <div className="section-heading">
-            <p className="eyebrow">Phase C</p>
-            <h2>Text bearbeiten</h2>
-            <p>Der erstellte Text ist ein Entwurf. Du kannst ihn direkt in der App prüfen und ändern.</p>
-          </div>
           <div className="editor-layout">
             <div className="editor-toolbar">
-              <span>{confirmed ? 'Entwurf bereit' : 'Bitte zuerst Analyse bestätigen'}</span>
-              <button type="button" onClick={saveFinalLetter}><Save size={16} /> Fertige Version speichern</button>
-              <button type="button" onClick={varyDraft}><RefreshCw size={16} /> Formulierungen variieren</button>
-              <button type="button" onClick={shortenDraft}><Scissors size={16} /> Kürzen</button>
+              <span>{draft ? `${wordCount} Wörter` : 'Noch kein Anschreiben erstellt'}</span>
+              <div className="toolbar-actions">
+                <button type="button" onClick={varyDraft} disabled={!draft}><RefreshCw size={16} /> Variieren</button>
+                <button type="button" onClick={shortenDraft} disabled={!draft}><Scissors size={16} /> Kürzen</button>
+                <button type="button" onClick={saveFinalLetter} disabled={!draft}><Save size={16} /> Fertig speichern</button>
+              </div>
             </div>
-            <textarea className="draft-editor" value={draft} onChange={(event) => setDraft(event.target.value)} />
+            <textarea
+              className="draft-editor"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Hier erscheint dein Anschreiben. Du kannst es direkt bearbeiten."
+            />
             <div className="editor-meta">
-              <span>{wordCount} Wörter</span>
-              <span>Stimme: {voice}</span>
+              <button type="button" className="button primary" onClick={downloadDocx} disabled={!draft}><Download size={18} /> DOCX herunterladen</button>
+              <button type="button" className="button secondary" onClick={copyForGoogleDocs} disabled={!draft}><Link2 size={18} /> Text kopieren</button>
             </div>
             <section className="saved-letters" aria-label="Gespeicherte Anschreiben">
               <div>
-                <h3>Gespeicherte fertige Versionen</h3>
+                <h3>Gespeicherte Versionen</h3>
                 {letterStatus && <p>{letterStatus}</p>}
               </div>
               {letters.length === 0 ? (
@@ -391,23 +392,139 @@ function ApplicationShell() {
             </section>
           </div>
         </section>
-
-        <section id="export" className="section export-card">
-          <div>
-            <p className="eyebrow">Finalisierung</p>
-            <h2>Export für Word oder Google Docs</h2>
-            <p>Den Text kannst du als Word-Datei herunterladen oder für Google Docs kopieren. Das Layout machst du anschließend im Textprogramm.</p>
-          </div>
-          <div className="export-actions">
-            <button type="button" className="button primary" onClick={downloadDocx}><Download size={18} /> Als .docx herunterladen</button>
-            <button type="button" className="button secondary" onClick={copyForGoogleDocs}><Link2 size={18} /> Für Google Docs kopieren</button>
-          </div>
-        </section>
       </main>
 
       <Footer />
     </div>
   );
+}
+
+function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label>
+      {label}
+      <input value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function loadPersonalData() {
+  try {
+    const stored = localStorage.getItem('bewerbungsassistent.personalData');
+    if (!stored) return defaultPersonalData;
+    return { ...defaultPersonalData, ...JSON.parse(stored) } as PersonalData;
+  } catch {
+    return defaultPersonalData;
+  }
+}
+
+function extractJobDetails(input: string): JobDetails {
+  const text = input.trim();
+  const url = extractUrl(text);
+  const companyFromUrl = url ? companyFromUrlString(url) : '';
+  const companyFromText = extractCompany(text);
+  const title = extractTitle(text, url);
+  const contact = extractContact(text);
+  const recipient = [companyFromText || companyFromUrl, contact].filter(Boolean).join('\n') || 'Empfänger bitte prüfen';
+
+  return {
+    recipient,
+    contact,
+    address: extractAddress(text),
+    subject: title ? `Bewerbung als ${title}` : 'Bewerbung',
+    salutation: contact ? `Sehr geehrte${contact.toLowerCase().includes('herr') ? 'r' : ''} ${contact.replace(/^(frau|herr)\s+/i, '')},` : 'Sehr geehrte Damen und Herren,',
+    company: companyFromText || companyFromUrl,
+    title,
+  };
+}
+
+function createDraft({ personalData, jobDetails, profile, voice }: { personalData: PersonalData; jobDetails: JobDetails; profile: ProfileData; voice: string }) {
+  const date = new Intl.DateTimeFormat('de-DE').format(new Date());
+  const keywords = profile.keywords.slice(0, 6).join(', ');
+  const cvSummary = profile.documents.find((document) => document.type === 'Lebenslauf')?.summary ?? profile.documents[0]?.summary ?? '';
+  const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
+  const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
+
+  return [
+    personalData.name,
+    personalData.qualification,
+    [personalData.email, personalData.phone].filter(Boolean).join(' · '),
+    [personalData.street, personalData.city].filter(Boolean).join(' · '),
+    personalData.website,
+    '',
+    jobDetails.recipient,
+    jobDetails.address,
+    '',
+    `${personalData.location}, ${date}`,
+    '',
+    jobDetails.subject,
+    '',
+    jobDetails.salutation,
+    '',
+    `mit großem Interesse bewerbe ich mich${titleReference}${companyReference}.`,
+    keywords ? `Aus meinem Lebenslauf bringe ich besonders folgende Erfahrungen mit: ${keywords}.` : 'Meine bisherigen Unterlagen zeigen eine strukturierte und zuverlässige Arbeitsweise.',
+    cvSummary ? `Relevant aus meiner Datenbasis: ${cvSummary}` : '',
+    `Der gewünschte Stil ist: ${voice}. Bitte diesen Entwurf vor dem Versand prüfen und persönliche Beispiele ergänzen.`,
+    '',
+    'Mit freundlichen Grüßen',
+    '',
+    personalData.closingName || personalData.name,
+  ].filter((line) => line !== undefined).join('\n');
+}
+
+function extractUrl(text: string) {
+  return text.match(/https?:\/\/\S+/i)?.[0] ?? '';
+}
+
+function companyFromUrlString(url: string) {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '');
+    const name = hostname.split('.')[0].replaceAll('-', ' ');
+    return titleCase(name);
+  } catch {
+    return '';
+  }
+}
+
+function extractCompany(text: string) {
+  return text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&. -]+\s(?:GmbH|AG|SE|KG|OHG|e\.V\.|Group|Holding))/)?.[1]?.trim() ?? '';
+}
+
+function extractContact(text: string) {
+  return text.match(/\b(Frau|Herr)\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)?/)?.[0] ?? '';
+}
+
+function extractAddress(text: string) {
+  const address = text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß. -]+\s+\d+[a-zA-Z]?,?\s*\n?\s*\d{5}\s+[A-ZÄÖÜ][\wÄÖÜäöüß -]+)/)?.[0];
+  return address?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
+function extractTitle(text: string, url: string) {
+  const titleFromText = text.match(/(?:Position|Stelle|Job|als)\s+([^\n.]{4,80})/i)?.[1]?.trim();
+  if (titleFromText) return cleanTitle(titleFromText);
+
+  if (url) {
+    try {
+      const path = new URL(url).pathname.split('/').filter(Boolean).pop() ?? '';
+      return cleanTitle(titleCase(path.replace(/[-_]/g, ' ')));
+    } catch {
+      return '';
+    }
+  }
+
+  return cleanTitle(text.split('\n').find((line) => line.trim().length > 6)?.trim() ?? '');
+}
+
+function cleanTitle(value: string) {
+  return value.replace(/\s+/g, ' ').replace(/\s*\(.*?\)\s*/g, ' ').trim().slice(0, 90);
+}
+
+function titleCase(value: string) {
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9äöüß]+/gi, '-').replace(/^-|-$/g, '') || 'anschreiben';
 }
 
 function formatFileSize(bytes: number) {
@@ -416,88 +533,8 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function buildAnalysis(jobText: string, profile: ProfileData) {
-  const requirements = extractImportantPhrases(jobText, 5);
-  const matches = [
-    ...profile.documents.slice(0, 3).map((document) => `${document.type}: ${document.fileName}`),
-    ...profile.keywords.slice(0, 4).map((keyword) => `Stichwort aus Unterlagen: ${keyword}`),
-  ];
-  const gaps = [
-    profile.documents.length === 0 ? 'Noch keine Unterlagen hochgeladen.' : '',
-    profile.text.length === 0 && profile.documents.length > 0 ? 'Mindestens eine Datei konnte nicht als Text ausgelesen werden.' : '',
-    jobText.trim().length < 40 ? 'Bitte zuerst eine Stellenanzeige einfügen.' : 'Bitte konkrete Beispiele und Zahlen im Entwurf prüfen.',
-  ].filter(Boolean);
-
-  return {
-    requirements: requirements.length > 0 ? requirements : ['Noch keine Stellenanzeige analysiert.'],
-    matches: matches.length > 0 ? matches : ['Noch keine auslesbaren Profilinformationen vorhanden.'],
-    gaps,
-  };
-}
-
-function createDraftFromProfile({ jobText, profile, voice }: { jobText: string; profile: ProfileData; voice: string }) {
-  const profileSource = profile.documents.length > 0
-    ? `Ich beziehe mich dabei insbesondere auf meine Unterlagen (${profile.documents.map((document) => document.fileName).join(', ')}).`
-    : 'Meine Unterlagen ergänze ich gerne im weiteren Verlauf.';
-  const keywords = profile.keywords.slice(0, 6).join(', ');
-  const requirements = extractImportantPhrases(jobText, 3).join(', ');
-  const profileSummary = profile.documents.find((document) => document.type === 'Lebenslauf')?.summary
-    ?? profile.documents[0]?.summary
-    ?? '';
-
-  return [
-    'Sehr geehrte Damen und Herren,',
-    '',
-    'vielen Dank für die Möglichkeit, mich auf die ausgeschriebene Stelle zu bewerben. Die Aufgaben aus der Stellenanzeige passen gut zu meinem bisherigen Profil.',
-    '',
-    requirements
-      ? `Besonders relevant erscheinen mir die Punkte ${requirements}.`
-      : 'Besonders relevant sind für mich die beschriebenen Aufgaben und Anforderungen.',
-    keywords
-      ? `Aus meinem Lebenslauf und meinen Unterlagen bringe ich unter anderem Erfahrung in folgenden Bereichen mit: ${keywords}.`
-      : profileSource,
-    profileSummary
-      ? `Ein Auszug aus meiner Datenbasis, den ich für die Bewerbung berücksichtigen möchte: ${profileSummary}`
-      : profileSource,
-    '',
-    `Der gewünschte Stil für dieses Anschreiben ist: ${voice}. Bitte prüfe diesen Entwurf inhaltlich und passe Beispiele, Zahlen und Formulierungen vor dem Versand an.`,
-    '',
-    'Mit freundlichen Grüßen',
-    'Michael Schellenberger',
-  ].join('\n');
-}
-
-function extractImportantPhrases(text: string, limit: number) {
-  const stopWords = new Set(['eine', 'einen', 'einem', 'einer', 'oder', 'und', 'mit', 'für', 'der', 'die', 'das', 'den', 'dem', 'des', 'sind', 'ist', 'wir', 'sie', 'ihre', 'deine', 'du']);
-  const words = text
-    .toLowerCase()
-    .match(/[a-zäöüßA-ZÄÖÜ]{5,}/g) ?? [];
-  const counts = new Map<string, number>();
-
-  for (const word of words) {
-    if (stopWords.has(word)) continue;
-    counts.set(word, (counts.get(word) ?? 0) + 1);
-  }
-
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([word]) => word);
-}
-
 function getApiKeyStorageKey(provider: string) {
   return `bewerbungsassistent.apiKey.${provider}`;
-}
-
-function AnalysisList({ title, items, warning = false }: { title: string; items: string[]; warning?: boolean }) {
-  return (
-    <article className={warning ? 'analysis-card warning' : 'analysis-card'}>
-      <h3>{title}</h3>
-      <ul>
-        {items.map((item) => <li key={item}>{item}</li>)}
-      </ul>
-    </article>
-  );
 }
 
 export default App;

@@ -6,22 +6,15 @@ Eine lokale App zum Vorbereiten von Bewerbungsunterlagen. Das Projekt ist Open S
 
 Der Bewerbungsassistent nutzt vorhandene Unterlagen und eine Stellenanzeige, um einen editierbaren Textentwurf vorzubereiten. Der Text muss anschließend im Editor geprüft und angepasst werden.
 
-## Workflow
+## Nutzung
 
-1. **Phase A: Onboarding**
-   - Dokumente wie Lebenslauf, Zeugnisse und Zertifikate im lokalen Ordner `datenbasis/` verwalten.
-   - Optional einen Tonfall festlegen, z. B. locker, formell oder selbstbewusst.
-   - API-Anbieter und API-Key nutzerkontrolliert eintragen.
+1. Stammdaten einmalig eintragen.
+2. Unterlagen hochladen.
+3. Link oder Text der Stellenanzeige einfügen.
+4. **Anschreiben erstellen** klicken.
+5. Text bei Bedarf anpassen, speichern oder als DOCX herunterladen.
 
-2. **Phase B: Matching**
-   - Stellenanzeige oder Link einfügen.
-   - Anforderungen, vorhandene Stärken und mögliche Lücken prüfen.
-   - Erst nach Bestätigung einen Entwurf generieren lassen.
-
-3. **Phase C: Nachbearbeitung**
-   - Anschreiben direkt in der App bearbeiten.
-   - Formulierungen variieren oder kürzen.
-   - Als `.docx` herunterladen oder Text für Google Docs kopieren.
+Die App versucht Empfänger, Ansprechpartner und Betreff aus dem eingefügten Link oder Text abzuleiten. Diese Daten sollten vor dem Versand geprüft werden.
 
 ## Technischer Stack
 
