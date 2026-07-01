@@ -341,7 +341,7 @@ function ApplicationShell() {
     const { AlignmentType, BorderStyle, Document, Packer, Paragraph, TextRun } = await import('docx');
     const lines = draft.split('\n');
     const subjectIndex = lines.findIndex((line) => line.trim().toLowerCase().startsWith('bewerbung'));
-    const dateIndex = lines.findIndex((line) => line.trim().startsWith('>>') || /\b\d{2}\.\d{2}\.\d{4}\b/.test(line));
+    const dateIndex = lines.findIndex((line) => /\b\d{2}\.\d{2}\.\d{4}\b/.test(line));
     const doc = new Document({
       sections: [{
         properties: {
@@ -355,7 +355,7 @@ function ApplicationShell() {
           } : undefined,
           alignment: index === dateIndex ? AlignmentType.RIGHT : AlignmentType.LEFT,
           children: [new TextRun({
-            text: line.includes('────') ? ' ' : line.replace(/^>>\s*/, '') || ' ',
+            text: line.includes('────') ? ' ' : line || ' ',
             bold: index === 0 || index === subjectIndex,
             italics: index === 1,
             color: index === 2 ? '44546A' : '000000',
@@ -662,7 +662,7 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
     jobDetails.recipient,
     jobDetails.address,
     '',
-    `>> ${personalData.location}, ${date}`,
+    `${personalData.location}, ${date}`,
     '',
     jobDetails.subject,
     '',
