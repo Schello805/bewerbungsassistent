@@ -85,7 +85,7 @@ function ApplicationShell() {
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
   const [letters, setLetters] = useState<SavedLetter[]>([]);
   const [profile, setProfile] = useState<ProfileData>({ documents: [], text: '', keywords: [] });
-  const [personalData, setPersonalData] = useState<PersonalData>(() => loadPersonalData());
+  const [personalData, setPersonalData] = useState<PersonalData>(defaultPersonalData);
   const [jobInput, setJobInput] = useState('');
   const [draft, setDraft] = useState('');
   const [documentStatus, setDocumentStatus] = useState('Dokumente werden geladen ...');
@@ -135,21 +135,63 @@ function ApplicationShell() {
     }
   }, []);
 
+  const loadSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/settings');
+      if (!response.ok) return;
+      const data = await response.json() as {
+        personalData?: PersonalData | null;
+        provider?: string | null;
+        voice?: string | null;
+      };
+      if (data.personalData) {
+        setPersonalData({ ...defaultPersonalData, ...data.personalData });
+      }
+      if (data.provider && providerOptions.includes(data.provider)) {
+        setProvider(data.provider);
+      }
+      if (data.voice && voiceOptions.includes(data.voice)) {
+        setVoice(data.voice);
+      }
+    } catch {
+      // Settings are optional; defaults keep the app usable.
+    }
+  }, []);
+
   useEffect(() => {
+    void loadSettings();
     void loadDocuments();
     void loadLetters();
-  }, [loadDocuments, loadLetters]);
+  }, [loadDocuments, loadLetters, loadSettings]);
 
   useEffect(() => {
     setApiKey(localStorage.getItem(getApiKeyStorageKey(provider)) ?? '');
   }, [provider]);
 
+  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string }) {
+    await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(nextSettings),
+    });
+  }
+
   function updatePersonalData(field: keyof PersonalData, value: string) {
     setPersonalData((current) => {
       const next = { ...current, [field]: value };
-      localStorage.setItem('bewerbungsassistent.personalData', JSON.stringify(next));
+      void saveSettings({ personalData: next });
       return next;
     });
+  }
+
+  function updateProvider(value: string) {
+    setProvider(value);
+    void saveSettings({ provider: value });
+  }
+
+  function updateVoice(value: string) {
+    setVoice(value);
+    void saveSettings({ voice: value });
   }
 
   function updateApiKey(value: string) {
@@ -347,13 +389,13 @@ function ApplicationShell() {
             <div className="settings-grid">
               <label>
                 Anbieter
-                <select value={provider} onChange={(event) => setProvider(event.target.value)}>
+                <select value={provider} onChange={(event) => updateProvider(event.target.value)}>
                   {providerOptions.map((option) => <option key={option}>{option}</option>)}
                 </select>
               </label>
               <label>
                 Stil
-                <select value={voice} onChange={(event) => setVoice(event.target.value)}>
+                <select value={voice} onChange={(event) => updateVoice(event.target.value)}>
                   {voiceOptions.map((option) => <option key={option}>{option}</option>)}
                 </select>
               </label>
@@ -420,16 +462,6 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
       <input value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
-}
-
-function loadPersonalData() {
-  try {
-    const stored = localStorage.getItem('bewerbungsassistent.personalData');
-    if (!stored) return defaultPersonalData;
-    return { ...defaultPersonalData, ...JSON.parse(stored) } as PersonalData;
-  } catch {
-    return defaultPersonalData;
-  }
 }
 
 function extractJobDetails(input: string): JobDetails {

@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import mammoth from 'mammoth';
+import Database from 'better-sqlite3';
 import { PDFParse } from 'pdf-parse';
 import { createServer as createViteServer } from 'vite';
 import fs from 'node:fs/promises';
@@ -11,11 +12,34 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const dataDir = path.join(rootDir, 'datenbasis');
 const lettersDir = path.join(rootDir, 'anschreiben');
+const storageDir = path.join(rootDir, 'data');
+const databasePath = path.join(storageDir, 'app.db');
 const port = Number(process.env.PORT || 5173);
+const host = process.env.HOST || '0.0.0.0';
 const isProduction = process.env.NODE_ENV === 'production';
 
 await fs.mkdir(dataDir, { recursive: true });
 await fs.mkdir(lettersDir, { recursive: true });
+await fs.mkdir(storageDir, { recursive: true });
+
+const db = new Database(databasePath);
+db.pragma('journal_mode = WAL');
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS letters (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    text TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+`);
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -79,6 +103,35 @@ app.get('/api/profile', async (_request, response, next) => {
   }
 });
 
+app.get('/api/settings', (_request, response, next) => {
+  try {
+    response.json({
+      personalData: getSetting('personalData', null),
+      provider: getSetting('provider', null),
+      voice: getSetting('voice', null),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/settings', (request, response, next) => {
+  try {
+    if ('personalData' in request.body) {
+      setSetting('personalData', request.body.personalData);
+    }
+    if ('provider' in request.body) {
+      setSetting('provider', request.body.provider);
+    }
+    if ('voice' in request.body) {
+      setSetting('voice', request.body.voice);
+    }
+    response.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/documents', upload.array('files', 30), (request, response) => {
   const files = Array.isArray(request.files) ? request.files : [];
 
@@ -116,28 +169,20 @@ app.delete('/api/documents/:fileName', async (request, response, next) => {
   }
 });
 
-app.get('/api/letters', async (_request, response, next) => {
+app.get('/api/letters', (_request, response, next) => {
   try {
-    const entries = await fs.readdir(lettersDir, { withFileTypes: true });
-    const letters = await Promise.all(entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.txt'))
-      .map(async (entry) => {
-        const filePath = path.join(lettersDir, entry.name);
-        const stats = await fs.stat(filePath);
-        return {
-          id: entry.name,
-          title: entry.name.replace(/\\.txt$/, ''),
-          updatedAt: stats.mtime.toISOString(),
-          size: stats.size,
-        };
-      }));
-    response.json({ letters: letters.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) });
+    const letters = db.prepare(`
+      SELECT id, title, size, updated_at AS updatedAt
+      FROM letters
+      ORDER BY updated_at DESC
+    `).all();
+    response.json({ letters });
   } catch (error) {
     next(error);
   }
 });
 
-app.post('/api/letters', async (request, response, next) => {
+app.post('/api/letters', (request, response, next) => {
   try {
     const text = typeof request.body.text === 'string' ? request.body.text.trim() : '';
     const rawTitle = typeof request.body.title === 'string' ? request.body.title : 'anschreiben';
@@ -147,18 +192,22 @@ app.post('/api/letters', async (request, response, next) => {
       return;
     }
 
-    const timestamp = new Date().toISOString().replaceAll(/[:.]/g, '-');
-    const fileName = `${timestamp}-${sanitizeFileName(rawTitle || 'anschreiben')}.txt`;
-    const filePath = path.join(lettersDir, fileName);
-    await fs.writeFile(filePath, `${text}\n`, 'utf8');
+    const now = new Date().toISOString();
+    const id = `${now.replaceAll(/[:.]/g, '-')}-${sanitizeFileName(rawTitle || 'anschreiben')}`;
+    const title = rawTitle.trim() || 'anschreiben';
+    const size = Buffer.byteLength(text, 'utf8');
 
-    const stats = await fs.stat(filePath);
+    db.prepare(`
+      INSERT INTO letters (id, title, text, size, created_at, updated_at)
+      VALUES (@id, @title, @text, @size, @now, @now)
+    `).run({ id, title, text, size, now });
+
     response.status(201).json({
       letter: {
-        id: fileName,
-        title: fileName.replace(/\\.txt$/, ''),
-        updatedAt: stats.mtime.toISOString(),
-        size: stats.size,
+        id,
+        title,
+        updatedAt: now,
+        size,
       },
     });
   } catch (error) {
@@ -184,10 +233,12 @@ if (isProduction) {
   app.use(vite.middlewares);
 }
 
-app.listen(port, () => {
+app.listen(port, host, () => {
   console.log(`Bewerbungsassistent läuft lokal: http://localhost:${port}/`);
+  console.log(`Bewerbungsassistent läuft im Netzwerk auf Port ${port}`);
   console.log(`Datenbasis: ${dataDir}`);
-  console.log(`Gespeicherte Anschreiben: ${lettersDir}`);
+  console.log(`Datenbank: ${databasePath}`);
+  console.log(`Gespeicherte Anschreiben: SQLite Tabelle letters`);
 });
 
 function sanitizeFileName(fileName) {
@@ -201,6 +252,26 @@ function inferDocumentType(fileName) {
   if (normalized.includes('zertifikat') || normalized.includes('certificate')) return 'Zertifikate';
   if (normalized.includes('profil') || normalized.includes('notiz')) return 'Master-Profil';
   return 'Dokument';
+}
+
+function getSetting(key, fallback) {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  if (!row) return fallback;
+  try {
+    return JSON.parse(row.value);
+  } catch {
+    return fallback;
+  }
+}
+
+function setSetting(key, value) {
+  db.prepare(`
+    INSERT INTO settings (key, value, updated_at)
+    VALUES (@key, @value, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      updated_at = CURRENT_TIMESTAMP
+  `).run({ key, value: JSON.stringify(value) });
 }
 
 async function readProfileFromDataDir() {

@@ -5,6 +5,7 @@ Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bl
 ## Funktionen
 
 - Stammdaten lokal speichern
+- Stammdaten zentral in SQLite speichern
 - Lebenslauf, Zeugnisse und weitere Unterlagen hochladen
 - mehrere Dateien gleichzeitig hochladen
 - sichtbares Upload-Feedback mit Fortschrittsanimation
@@ -13,6 +14,7 @@ Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bl
 - gewünschte Angaben wie Wunschgehalt, Eintrittstermin oder Referenznummer als Platzhalter erkennen
 - Anschreiben direkt bearbeiten
 - fertige Versionen lokal speichern
+- fertige Versionen zentral in SQLite speichern
 - DOCX herunterladen oder Text kopieren
 
 ## Installation auf Debian 13 oder Ubuntu 24.04
@@ -64,14 +66,18 @@ systemctl restart bewerbungsassistent
 
 Standard-Port: `5173`
 
+Der Server lauscht standardmäßig auf allen Netzwerkinterfaces (`0.0.0.0`). Dadurch kann die App im lokalen Netzwerk über `http://SERVER-IP:5173/` von PC, Tablet, Handy oder Laptop genutzt werden.
+
 ## Lokale Ordner
 
 ```text
 datenbasis/   hochgeladene Unterlagen
-anschreiben/  gespeicherte fertige Anschreiben
+data/         SQLite-Datenbank mit Stammdaten und gespeicherten Anschreiben
 ```
 
-Persönliche Dateien in `datenbasis/` und gespeicherte Anschreiben in `anschreiben/` werden nicht in das Repository übernommen. Nur `.gitkeep`-Dateien halten die Ordnerstruktur vor.
+Persönliche Dateien in `datenbasis/` und SQLite-Dateien in `data/` werden nicht in das Repository übernommen. Nur `.gitkeep`-Dateien halten die Ordnerstruktur vor.
+
+API-Keys werden aus Sicherheitsgründen weiterhin im jeweiligen Browser gespeichert und nicht zentral in SQLite abgelegt.
 
 ## Entwicklung
 
@@ -88,6 +94,7 @@ npm run build
 - TypeScript
 - Vite
 - Express
+- SQLite
 - Multer
 - pdf-parse
 - Mammoth

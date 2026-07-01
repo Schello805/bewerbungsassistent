@@ -84,7 +84,7 @@ prepare_app_directory() {
     git clone "${REPO_URL}" "${APP_DIR}"
   fi
 
-  mkdir -p "${APP_DIR}/datenbasis" "${APP_DIR}/anschreiben"
+  mkdir -p "${APP_DIR}/datenbasis" "${APP_DIR}/anschreiben" "${APP_DIR}/data"
   chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DIR}"
   success "App-Verzeichnis vorbereitet: ${APP_DIR}"
 }
