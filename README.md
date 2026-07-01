@@ -75,12 +75,12 @@ Der Server lauscht standardmäßig auf allen Netzwerkinterfaces (`0.0.0.0`). Dad
 
 ```text
 datenbasis/   hochgeladene Unterlagen
-data/         SQLite-Datenbank mit Stammdaten und gespeicherten Anschreiben
+data/         SQLite-Datenbank mit Stammdaten, API-Keys und gespeicherten Anschreiben
 ```
 
 Persönliche Dateien in `datenbasis/` und SQLite-Dateien in `data/` werden nicht in das Repository übernommen. Nur `.gitkeep`-Dateien halten die Ordnerstruktur vor.
 
-API-Keys werden aus Sicherheitsgründen weiterhin im jeweiligen Browser gespeichert und nicht zentral in SQLite abgelegt.
+API-Keys werden zentral in der lokalen SQLite-Datenbank gespeichert, damit die App im lokalen Netzwerk von mehreren Geräten genutzt werden kann. Schütze Server, Datenbankdatei und Backups vor unbefugtem Zugriff.
 
 ## Entwicklung
 
