@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.local
+.DS_Store
+*.log
+.vite
+coverage
+datenbasis/*
+!datenbasis/.gitkeep
+anschreiben/*
+!anschreiben/.gitkeep
