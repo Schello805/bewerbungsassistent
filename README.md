@@ -82,6 +82,8 @@ Persönliche Dateien in `datenbasis/` und SQLite-Dateien in `data/` werden nicht
 
 API-Keys werden zentral in der lokalen SQLite-Datenbank gespeichert, damit die App im lokalen Netzwerk von mehreren Geräten genutzt werden kann. Schütze Server, Datenbankdatei und Backups vor unbefugtem Zugriff.
 
+Backups können direkt in der App unter `Einstellungen` heruntergeladen und wieder eingespielt werden. Die Backup-Datei enthält Stammdaten, Unterlagen, gespeicherte Anschreiben, Einstellungen und API-Keys.
+
 ## Entwicklung
 
 ```bash

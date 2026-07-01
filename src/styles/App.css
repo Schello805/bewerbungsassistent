@@ -15,6 +15,8 @@
   --brand-soft: rgba(103, 80, 245, 0.12);
   --cyan: #2fb7e8;
   --mint: #0f9f8f;
+  --success: #16a34a;
+  --success-dark: #15803d;
   --amber: #ffb020;
   --danger: #b42318;
   --shadow: 0 18px 60px rgba(23, 32, 51, 0.1);
@@ -175,6 +177,10 @@ code {
 
 .settings-page .master-data-panel {
   grid-row: span 2;
+}
+
+.settings-page .backup-panel {
+  grid-column: 2;
 }
 
 .settings-page .master-data-panel .form-grid {
@@ -388,6 +394,16 @@ textarea:focus {
 
 .primary:hover { background: var(--brand-dark); }
 
+.success {
+  background: linear-gradient(135deg, var(--success), #22c55e);
+  color: white;
+  box-shadow: 0 14px 34px rgba(22, 163, 74, 0.28);
+}
+
+.success:hover {
+  background: linear-gradient(135deg, var(--success-dark), var(--success));
+}
+
 .secondary,
 .panel-header button,
 .editor-toolbar button {
@@ -585,6 +601,19 @@ textarea:focus {
   box-shadow: 0 22px 70px rgba(47, 183, 232, 0.18);
 }
 
+.backup-panel {
+  min-height: 180px;
+  background:
+    linear-gradient(135deg, rgba(22, 163, 74, 0.1), rgba(47, 183, 232, 0.08)),
+    rgba(255, 253, 248, 0.9);
+}
+
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .upload-button {
   min-width: 178px;
 }
@@ -668,8 +697,28 @@ textarea:focus {
 }
 
 .toolbar-actions button {
-  padding: 0.62rem 0.82rem;
-  font-size: 0.92rem;
+  padding: 0.52rem 0.7rem;
+  font-size: 0.84rem;
+}
+
+.toolbar-actions .ai-chip {
+  border-color: #d9dee8;
+  background: #f3f5f9;
+  color: #536070;
+  box-shadow: none;
+}
+
+.toolbar-actions .ai-chip:hover {
+  border-color: #c6ceda;
+  background: #e9edf4;
+  color: var(--ink);
+}
+
+.editor-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
+  gap: 18px;
+  align-items: start;
 }
 
 .draft-editor {
@@ -678,6 +727,90 @@ textarea:focus {
   font-family: ui-serif, Georgia, "Times New Roman", serif;
   font-size: 1.02rem;
   line-height: 1.75;
+}
+
+.letter-preview {
+  min-width: 0;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(47, 183, 232, 0.14), transparent 30%),
+    linear-gradient(135deg, rgba(23, 32, 51, 0.06), rgba(103, 80, 245, 0.06));
+  padding: 18px;
+}
+
+.preview-page {
+  min-height: 560px;
+  max-height: 720px;
+  overflow-y: auto;
+  border: 1px solid rgba(230, 222, 209, 0.95);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 22px 55px rgba(23, 32, 51, 0.12);
+  padding: clamp(24px, 4vw, 46px);
+  color: #111827;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: 0.86rem;
+  line-height: 1.48;
+}
+
+.preview-page p {
+  margin: 0 0 0.62rem;
+  color: inherit;
+  font-size: inherit;
+  white-space: pre-wrap;
+}
+
+.preview-name {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 1rem !important;
+  font-weight: 900;
+}
+
+.preview-qualification {
+  font-style: italic;
+  font-weight: 700;
+}
+
+.preview-contact {
+  color: #44546a !important;
+  font-size: 0.78rem !important;
+}
+
+.preview-rule {
+  width: min(360px, 72%);
+  height: 2px;
+  margin: 0.4rem 0 2rem;
+  background: linear-gradient(90deg, #1f4e79, rgba(31, 78, 121, 0.2));
+}
+
+.preview-date {
+  margin-top: 1.4rem !important;
+  text-align: right;
+}
+
+.preview-subject {
+  margin-top: 1.2rem !important;
+  margin-bottom: 1.3rem !important;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-weight: 900;
+}
+
+.preview-blank {
+  height: 0.86rem;
+}
+
+.preview-empty {
+  display: grid;
+  place-content: center;
+  min-height: 460px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.preview-empty strong {
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.2rem;
 }
 
 .editor-meta {
@@ -805,6 +938,7 @@ textarea:focus {
   .slim-grid,
   .apply-grid,
   .settings-page,
+  .editor-preview-grid,
   .form-grid,
   .settings-grid {
     grid-template-columns: 1fr;
@@ -812,6 +946,10 @@ textarea:focus {
 
   .settings-page .master-data-panel {
     grid-row: auto;
+  }
+
+  .settings-page .backup-panel {
+    grid-column: auto;
   }
 
   .api-field {

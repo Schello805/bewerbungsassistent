@@ -58,6 +58,16 @@ type JobDetails = {
 };
 
 type RequestedInfo = 'salary' | 'startDate' | 'availability' | 'reference' | 'documents' | 'motivation';
+type RewriteMode = 'modern' | 'detailed' | 'confident' | 'formal' | 'alternative' | 'shorten';
+
+const rewriteLabels: Record<RewriteMode, string> = {
+  modern: 'Moderner',
+  detailed: 'Detaillierter',
+  confident: 'Selbstbewusster',
+  formal: 'Formeller',
+  alternative: 'Alternative',
+  shorten: 'Kürzen',
+};
 
 const defaultPersonalData: PersonalData = {
   name: 'Michael Schellenberger',
@@ -93,6 +103,8 @@ function ApplicationShell() {
   const [letterStatus, setLetterStatus] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [backupStatus, setBackupStatus] = useState('');
   const [activeLetterId, setActiveLetterId] = useState<string | null>(null);
   const [view, setView] = useState<'apply' | 'settings'>('apply');
   const [voice, setVoice] = useState(voiceOptions[0]);
@@ -101,6 +113,7 @@ function ApplicationShell() {
   const [apiKeyProviders, setApiKeyProviders] = useState<string[]>([]);
   const [apiKeyStatus, setApiKeyStatus] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
 
   const wordCount = useMemo(() => draft.trim().split(/\s+/).filter(Boolean).length, [draft]);
   const jobDetails = useMemo(() => extractJobDetails(jobInput), [jobInput]);
@@ -331,28 +344,43 @@ function ApplicationShell() {
     }
   }
 
-  function shortenDraft() {
-    setDraft((current) => current.split('\n').filter((line) => line.trim().length > 0).slice(0, 18).join('\n\n'));
-  }
+  async function rewriteDraft(mode: RewriteMode) {
+    if (!draft.trim()) return;
 
-  function varyDraft() {
-    setDraft((current) => `${current}\n\nAlternative Formulierung:\nIch bringe eine strukturierte, praxisnahe Arbeitsweise mit und kann mich schnell in neue Aufgaben einarbeiten.`);
-  }
+    if (!hasApiKey) {
+      setLetterStatus('Für echte KI-Nachbearbeitung bitte einen API-Key speichern.');
+      return;
+    }
 
-  function makeDraftModern() {
-    setDraft((current) => appendEditorNote(current, 'Moderner formulieren', 'Bitte den Text moderner, klarer und weniger förmlich formulieren. Kurze Sätze, aktive Sprache, professionell aber nicht steif.'));
-  }
-
-  function makeDraftDetailed() {
-    setDraft((current) => appendEditorNote(current, 'Detaillierter ausarbeiten', 'Bitte ergänze konkrete Beispiele, messbare Ergebnisse und passendere Bezüge zu meinen Unterlagen. Platzhalter mit XXX stehen lassen, wenn Angaben fehlen.'));
-  }
-
-  function makeDraftConfident() {
-    setDraft((current) => appendEditorNote(current, 'Selbstbewusster formulieren', 'Bitte den Text direkter und überzeugender formulieren. Stärken klar benennen, ohne überheblich zu wirken.'));
-  }
-
-  function makeDraftFormal() {
-    setDraft((current) => appendEditorNote(current, 'Formeller formulieren', 'Bitte den Text klassischer, seriöser und zurückhaltender formulieren. Geeignet für konservative Unternehmen.'));
+    setIsRewriting(true);
+    setLetterStatus(`${rewriteLabels[mode]} läuft ...`);
+    try {
+      const response = await fetch('/api/rewrite-letter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          apiKey: apiKey.trim() || undefined,
+          mode,
+          voice,
+          personalData,
+          jobDetails,
+          text: draft,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? 'KI-Überarbeitung fehlgeschlagen.');
+      }
+      const data = await response.json() as { text: string };
+      setDraft(data.text || draft);
+      setActiveLetterId(null);
+      setLetterStatus(`${rewriteLabels[mode]} fertig.`);
+    } catch (error) {
+      setLetterStatus(error instanceof Error ? error.message : 'KI-Überarbeitung fehlgeschlagen.');
+    } finally {
+      setIsRewriting(false);
+    }
   }
 
   async function saveFinalLetter() {
@@ -471,6 +499,52 @@ function ApplicationShell() {
     }
   }
 
+  async function downloadBackup() {
+    setBackupStatus('Backup wird erstellt ...');
+    try {
+      const response = await fetch('/api/backup');
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? 'Backup konnte nicht erstellt werden.');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `bewerbungsassistent-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setBackupStatus('Backup heruntergeladen.');
+    } catch (error) {
+      setBackupStatus(error instanceof Error ? error.message : 'Backup konnte nicht erstellt werden.');
+    }
+  }
+
+  async function restoreBackup(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setBackupStatus('Backup wird eingespielt ...');
+    try {
+      const backup = JSON.parse(await file.text()) as unknown;
+      const response = await fetch('/api/backup/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(backup),
+      });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? 'Backup konnte nicht eingespielt werden.');
+      }
+      await Promise.all([loadSettings(), loadDocuments(), loadLetters()]);
+      setBackupStatus('Backup wiederhergestellt.');
+    } catch (error) {
+      setBackupStatus(error instanceof Error ? error.message : 'Backup konnte nicht eingespielt werden.');
+    } finally {
+      event.target.value = '';
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -524,22 +598,25 @@ function ApplicationShell() {
             <div className="editor-toolbar">
               <span>{draft ? `${wordCount} Wörter${activeLetterId ? ' · gespeicherte Version geöffnet' : ''}` : 'Noch kein Anschreiben erstellt'}</span>
               <div className="toolbar-actions">
-                <button type="button" onClick={makeDraftModern} disabled={!draft}><RefreshCw size={16} /> Moderner</button>
-                <button type="button" onClick={makeDraftDetailed} disabled={!draft}><RefreshCw size={16} /> Detaillierter</button>
-                <button type="button" onClick={makeDraftConfident} disabled={!draft}><RefreshCw size={16} /> Selbstbewusster</button>
-                <button type="button" onClick={makeDraftFormal} disabled={!draft}><RefreshCw size={16} /> Formeller</button>
-                <button type="button" onClick={varyDraft} disabled={!draft}><RefreshCw size={16} /> Alternative</button>
-                <button type="button" onClick={shortenDraft} disabled={!draft}><Scissors size={16} /> Kürzen</button>
-                <button type="button" onClick={saveFinalLetter} disabled={!draft}><Save size={16} /> Fertig speichern</button>
+                <button type="button" className="ai-chip" onClick={() => rewriteDraft('modern')} disabled={!draft || isRewriting}><RefreshCw size={14} /> Moderner</button>
+                <button type="button" className="ai-chip" onClick={() => rewriteDraft('detailed')} disabled={!draft || isRewriting}><RefreshCw size={14} /> Detaillierter</button>
+                <button type="button" className="ai-chip" onClick={() => rewriteDraft('confident')} disabled={!draft || isRewriting}><RefreshCw size={14} /> Fordernder</button>
+                <button type="button" className="ai-chip" onClick={() => rewriteDraft('formal')} disabled={!draft || isRewriting}><RefreshCw size={14} /> Formeller</button>
+                <button type="button" className="ai-chip" onClick={() => rewriteDraft('alternative')} disabled={!draft || isRewriting}><RefreshCw size={14} /> Alternative</button>
+                <button type="button" className="ai-chip" onClick={() => rewriteDraft('shorten')} disabled={!draft || isRewriting}><Scissors size={14} /> Kürzen</button>
               </div>
             </div>
-            <textarea
-              className="draft-editor"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Hier erscheint dein Anschreiben. Du kannst es direkt bearbeiten."
-            />
+            <div className="editor-preview-grid">
+              <textarea
+                className="draft-editor"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Hier erscheint dein Anschreiben. Du kannst es direkt bearbeiten."
+              />
+              <LetterPreview text={draft} />
+            </div>
             <div className="editor-meta">
+              <button type="button" className="button success" onClick={saveFinalLetter} disabled={!draft}><Save size={18} /> Fertig speichern</button>
               <button type="button" className="button primary" onClick={downloadDocx} disabled={!draft}><Download size={18} /> DOCX herunterladen</button>
               <button type="button" className="button secondary" onClick={copyForGoogleDocs} disabled={!draft}><Link2 size={18} /> Text kopieren</button>
             </div>
@@ -655,12 +732,57 @@ function ApplicationShell() {
               ))}
             </ul>
           </article>
+
+          <article className="panel backup-panel">
+            <div className="panel-header">
+              <div>
+                <h2>Backup</h2>
+                <p className="document-status">{backupStatus || 'Stammdaten, Unterlagen, API-Keys und Anschreiben sichern.'}</p>
+              </div>
+            </div>
+            <div className="backup-actions">
+              <button type="button" className="button primary" onClick={downloadBackup}><Download size={18} /> Backup herunterladen</button>
+              <button type="button" className="button secondary" onClick={() => backupInputRef.current?.click()}><FileUp size={18} /> Backup einspielen</button>
+              <input ref={backupInputRef} type="file" accept="application/json,.json" onChange={restoreBackup} className="visually-hidden" />
+            </div>
+          </article>
         </section>
         )}
       </main>
 
       <Footer />
     </div>
+  );
+}
+
+function LetterPreview({ text }: { text: string }) {
+  const lines = text.split('\n');
+  const subjectIndex = lines.findIndex((line) => line.trim().toLowerCase().startsWith('bewerbung'));
+  const dateIndex = lines.findIndex((line) => /\b\d{1,2}\.\d{1,2}\.\d{4}\b/.test(line));
+
+  return (
+    <aside className="letter-preview" aria-label="Anschreiben Vorschau">
+      <div className="preview-page">
+        {text.trim() ? lines.map((line, index) => {
+          const trimmed = line.trim();
+          if (line.includes('────')) return <div key={`${index}-${line}`} className="preview-rule" />;
+          if (!trimmed) return <div key={`${index}-blank`} className="preview-blank" />;
+          const classNames = [
+            index === 0 ? 'preview-name' : '',
+            index === 1 ? 'preview-qualification' : '',
+            index === 2 ? 'preview-contact' : '',
+            index === subjectIndex ? 'preview-subject' : '',
+            index === dateIndex ? 'preview-date' : '',
+          ].filter(Boolean).join(' ');
+          return <p key={`${index}-${line}`} className={classNames}>{line}</p>;
+        }) : (
+          <div className="preview-empty">
+            <strong>Vorschau</strong>
+            <span>Hier erscheint dein Anschreiben im DIN-A4-Stil.</span>
+          </div>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -733,17 +855,6 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
     '',
     personalData.closingName || personalData.name,
   ].filter((line) => line !== undefined).join('\n');
-}
-
-function appendEditorNote(text: string, title: string, instruction: string) {
-  const cleaned = text.replace(/\n\n---\nBearbeitungshinweis:[\s\S]*$/m, '').trim();
-  return [
-    cleaned,
-    '',
-    '---',
-    `Bearbeitungshinweis: ${title}`,
-    instruction,
-  ].join('\n');
 }
 
 function extractRequestedInfo(text: string): RequestedInfo[] {
