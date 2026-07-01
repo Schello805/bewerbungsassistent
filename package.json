@@ -14,6 +14,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "better-sqlite3": "^12.11.1",
+    "cheerio": "^1.2.0",
     "clsx": "latest",
     "docx": "latest",
     "express": "^5.2.1",

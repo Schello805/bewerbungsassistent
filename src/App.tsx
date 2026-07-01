@@ -1,5 +1,5 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FileUp, KeyRound, Link2, RefreshCw, Save, Scissors, Trash2 } from 'lucide-react';
+import { Download, FileUp, KeyRound, Link2, RefreshCw, Save, Scissors, Trash2, WandSparkles } from 'lucide-react';
 import { Footer } from './components/Footer';
 import { LegalPage } from './components/LegalPage';
 import { providerOptions, voiceOptions } from './data/workflow';
@@ -18,6 +18,7 @@ type SavedLetter = {
   title: string;
   size: number;
   updatedAt: string;
+  text?: string;
 };
 
 type ProfileDocument = {
@@ -91,6 +92,8 @@ function ApplicationShell() {
   const [documentStatus, setDocumentStatus] = useState('Dokumente werden geladen ...');
   const [letterStatus, setLetterStatus] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [activeLetterId, setActiveLetterId] = useState<string | null>(null);
   const [voice, setVoice] = useState(voiceOptions[0]);
   const [provider, setProvider] = useState(providerOptions[0]);
   const [apiKey, setApiKey] = useState('');
@@ -244,9 +247,48 @@ function ApplicationShell() {
     }
   }
 
-  function createLetter() {
-    setDraft(createDraft({ personalData, jobDetails, profile, voice }));
-    window.setTimeout(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  async function createLetter() {
+    setIsGenerating(true);
+    setLetterStatus('');
+    try {
+      const resolvedJobInput = await resolveJobInput(jobInput);
+      if (resolvedJobInput !== jobInput) {
+        setJobInput(resolvedJobInput);
+      }
+      const resolvedJobDetails = extractJobDetails(resolvedJobInput);
+
+      if (!apiKey.trim()) {
+        setDraft(createDraft({ personalData, jobDetails: resolvedJobDetails, profile, voice }));
+        setLetterStatus('Kein API-Key eingetragen. Lokale Vorlage erstellt.');
+        return;
+      }
+
+      const response = await fetch('/api/generate-letter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          apiKey,
+          voice,
+          personalData,
+          jobInput: resolvedJobInput,
+          jobDetails: resolvedJobDetails,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? 'KI-Generierung fehlgeschlagen.');
+      }
+      const data = await response.json() as { text: string };
+      setDraft(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile, voice }));
+      setActiveLetterId(null);
+    } catch (error) {
+      setDraft(createDraft({ personalData, jobDetails, profile, voice }));
+      setLetterStatus(error instanceof Error ? `KI nicht verfügbar: ${error.message}` : 'KI nicht verfügbar. Lokale Vorlage erstellt.');
+    } finally {
+      setIsGenerating(false);
+      window.setTimeout(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
   }
 
   function shortenDraft() {
@@ -260,8 +302,8 @@ function ApplicationShell() {
   async function saveFinalLetter() {
     setLetterStatus('Fertige Version wird gespeichert ...');
     try {
-      const response = await fetch('/api/letters', {
-        method: 'POST',
+      const response = await fetch(activeLetterId ? `/api/letters/${encodeURIComponent(activeLetterId)}` : '/api/letters', {
+        method: activeLetterId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: jobDetails.subject || 'anschreiben', text: draft }),
       });
@@ -270,20 +312,38 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'Anschreiben konnte nicht gespeichert werden.');
       }
       await loadLetters();
-      setLetterStatus('Fertige Version gespeichert.');
+      const data = await response.json() as { letter?: SavedLetter };
+      if (data.letter?.id) setActiveLetterId(data.letter.id);
+      setLetterStatus(activeLetterId ? 'Änderungen gespeichert.' : 'Fertige Version gespeichert.');
     } catch (error) {
       setLetterStatus(error instanceof Error ? error.message : 'Anschreiben konnte nicht gespeichert werden.');
     }
   }
 
   async function downloadDocx() {
-    const { Document, Packer, Paragraph, TextRun } = await import('docx');
+    const { AlignmentType, Document, Packer, Paragraph, TextRun } = await import('docx');
+    const lines = draft.split('\n');
+    const subjectIndex = lines.findIndex((line) => line.trim().toLowerCase().startsWith('bewerbung'));
+    const dateIndex = lines.findIndex((line) => /\b\d{2}\.\d{2}\.\d{4}\b/.test(line));
     const doc = new Document({
       sections: [{
-        properties: {},
-        children: draft.split('\n').map((line) => new Paragraph({
-          children: [new TextRun(line || ' ')],
-          spacing: { after: 160 },
+        properties: {
+          page: {
+            margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 },
+          },
+        },
+        children: lines.map((line, index) => new Paragraph({
+          alignment: index === dateIndex ? AlignmentType.RIGHT : AlignmentType.LEFT,
+          children: [new TextRun({
+            text: line || ' ',
+            bold: index === 0 || index === subjectIndex,
+            italics: index === 1,
+            size: index === subjectIndex ? 24 : 22,
+          })],
+          spacing: {
+            before: index === subjectIndex ? 260 : 0,
+            after: line.trim() === '' ? 100 : index === subjectIndex ? 260 : 170,
+          },
         })),
       }],
     });
@@ -298,6 +358,57 @@ function ApplicationShell() {
 
   async function copyForGoogleDocs() {
     await navigator.clipboard.writeText(draft);
+  }
+
+  async function resolveJobInput(input: string) {
+    const url = extractUrl(input.trim());
+    if (!url || input.trim().replace(url, '').trim().length > 30) return input;
+
+    const response = await fetch('/api/fetch-job', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (!response.ok) return input;
+    const data = await response.json() as { job?: { title?: string; text?: string; url?: string } };
+    return [data.job?.title, data.job?.url, data.job?.text].filter(Boolean).join('\n\n') || input;
+  }
+
+  async function openLetter(id: string) {
+    setLetterStatus('Gespeicherte Version wird geladen ...');
+    try {
+      const response = await fetch(`/api/letters/${encodeURIComponent(id)}`);
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? 'Anschreiben konnte nicht geladen werden.');
+      }
+      const data = await response.json() as { letter: SavedLetter };
+      setDraft(data.letter.text ?? '');
+      setActiveLetterId(data.letter.id);
+      setLetterStatus('Gespeicherte Version geladen.');
+      window.setTimeout(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    } catch (error) {
+      setLetterStatus(error instanceof Error ? error.message : 'Anschreiben konnte nicht geladen werden.');
+    }
+  }
+
+  async function deleteLetter(id: string) {
+    setLetterStatus('Gespeicherte Version wird gelöscht ...');
+    try {
+      const response = await fetch(`/api/letters/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? 'Anschreiben konnte nicht gelöscht werden.');
+      }
+      if (activeLetterId === id) {
+        setActiveLetterId(null);
+        setDraft('');
+      }
+      await loadLetters();
+      setLetterStatus('Gespeicherte Version gelöscht.');
+    } catch (error) {
+      setLetterStatus(error instanceof Error ? error.message : 'Anschreiben konnte nicht gelöscht werden.');
+    }
   }
 
   return (
@@ -329,8 +440,9 @@ function ApplicationShell() {
                 placeholder="Link oder Text der Stellenanzeige hier einfügen ..."
               />
             </label>
-            <button type="button" className="button primary big-action" onClick={createLetter} disabled={!canCreateLetter}>
-              Anschreiben erstellen
+            <button type="button" className="button primary big-action" onClick={createLetter} disabled={!canCreateLetter || isGenerating}>
+              <WandSparkles size={18} />
+              {isGenerating ? 'Anschreiben wird erstellt ...' : 'Anschreiben erstellen'}
             </button>
           </article>
 
@@ -411,7 +523,7 @@ function ApplicationShell() {
         <section id="editor" className="section editor-section">
           <div className="editor-layout">
             <div className="editor-toolbar">
-              <span>{draft ? `${wordCount} Wörter` : 'Noch kein Anschreiben erstellt'}</span>
+              <span>{draft ? `${wordCount} Wörter${activeLetterId ? ' · gespeicherte Version geöffnet' : ''}` : 'Noch kein Anschreiben erstellt'}</span>
               <div className="toolbar-actions">
                 <button type="button" onClick={varyDraft} disabled={!draft}><RefreshCw size={16} /> Variieren</button>
                 <button type="button" onClick={shortenDraft} disabled={!draft}><Scissors size={16} /> Kürzen</button>
@@ -441,6 +553,10 @@ function ApplicationShell() {
                     <li key={letter.id}>
                       <span>{letter.title}</span>
                       <small>{new Date(letter.updatedAt).toLocaleString('de-DE')} · {formatFileSize(letter.size)}</small>
+                      <div className="saved-letter-actions">
+                        <button type="button" onClick={() => openLetter(letter.id)}>Öffnen</button>
+                        <button type="button" className="danger-button" onClick={() => deleteLetter(letter.id)}>Löschen</button>
+                      </div>
                     </li>
                   ))}
                 </ul>

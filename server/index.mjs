@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import mammoth from 'mammoth';
 import Database from 'better-sqlite3';
+import * as cheerio from 'cheerio';
 import { PDFParse } from 'pdf-parse';
 import { createServer as createViteServer } from 'vite';
 import fs from 'node:fs/promises';
@@ -182,6 +183,25 @@ app.get('/api/letters', (_request, response, next) => {
   }
 });
 
+app.get('/api/letters/:id', (request, response, next) => {
+  try {
+    const letter = db.prepare(`
+      SELECT id, title, text, size, updated_at AS updatedAt
+      FROM letters
+      WHERE id = ?
+    `).get(request.params.id);
+
+    if (!letter) {
+      response.status(404).json({ error: 'Anschreiben nicht gefunden.' });
+      return;
+    }
+
+    response.json({ letter });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/letters', (request, response, next) => {
   try {
     const text = typeof request.body.text === 'string' ? request.body.text.trim() : '';
@@ -210,6 +230,89 @@ app.post('/api/letters', (request, response, next) => {
         size,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/letters/:id', (request, response, next) => {
+  try {
+    const text = typeof request.body.text === 'string' ? request.body.text.trim() : '';
+    const title = typeof request.body.title === 'string' && request.body.title.trim()
+      ? request.body.title.trim()
+      : 'anschreiben';
+
+    if (text.length < 20) {
+      response.status(400).json({ error: 'Der Text ist zu kurz zum Speichern.' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const size = Buffer.byteLength(text, 'utf8');
+    const result = db.prepare(`
+      UPDATE letters
+      SET title = @title, text = @text, size = @size, updated_at = @now
+      WHERE id = @id
+    `).run({ id: request.params.id, title, text, size, now });
+
+    if (result.changes === 0) {
+      response.status(404).json({ error: 'Anschreiben nicht gefunden.' });
+      return;
+    }
+
+    response.json({ letter: { id: request.params.id, title, text, size, updatedAt: now } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/letters/:id', (request, response, next) => {
+  try {
+    const result = db.prepare('DELETE FROM letters WHERE id = ?').run(request.params.id);
+    if (result.changes === 0) {
+      response.status(404).json({ error: 'Anschreiben nicht gefunden.' });
+      return;
+    }
+    response.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/fetch-job', async (request, response, next) => {
+  try {
+    const url = typeof request.body.url === 'string' ? request.body.url.trim() : '';
+    if (!/^https?:\/\//i.test(url)) {
+      response.status(400).json({ error: 'Bitte einen gültigen HTTP- oder HTTPS-Link angeben.' });
+      return;
+    }
+
+    const job = await fetchJobPosting(url);
+    response.json({ job });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/generate-letter', async (request, response, next) => {
+  try {
+    const provider = typeof request.body.provider === 'string' ? request.body.provider : 'OpenAI';
+    const apiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
+    const prompt = buildAiPrompt({
+      personalData: request.body.personalData,
+      jobInput: request.body.jobInput,
+      jobDetails: request.body.jobDetails,
+      voice: request.body.voice,
+      profile: await readProfileFromDataDir(),
+    });
+
+    if (!apiKey) {
+      response.status(400).json({ error: 'Kein API-Key eingetragen.' });
+      return;
+    }
+
+    const text = await generateWithProvider({ provider, apiKey, prompt });
+    response.json({ text });
   } catch (error) {
     next(error);
   }
@@ -272,6 +375,166 @@ function setSetting(key, value) {
       value = excluded.value,
       updated_at = CURRENT_TIMESTAMP
   `).run({ key, value: JSON.stringify(value) });
+}
+
+async function fetchJobPosting(url) {
+  const response = await fetch(url, {
+    headers: {
+      'user-agent': 'Mozilla/5.0 Bewerbungsassistent/0.1',
+      accept: 'text/html,application/xhtml+xml',
+    },
+    redirect: 'follow',
+  });
+
+  if (!response.ok) {
+    throw new Error(`Stellenanzeige konnte nicht geladen werden (${response.status}).`);
+  }
+
+  const html = await response.text();
+  const $ = cheerio.load(html);
+  $('script, style, noscript, svg, nav, footer, header').remove();
+  const title = $('meta[property="og:title"]').attr('content') || $('title').first().text();
+  const description = $('meta[name="description"]').attr('content') || '';
+  const bodyText = $('main').text() || $('body').text();
+  const text = normalizeText([title, description, bodyText].filter(Boolean).join('\n\n')).slice(0, 14000);
+
+  return {
+    url,
+    title: normalizeText(title).slice(0, 180),
+    text,
+  };
+}
+
+function buildAiPrompt({ personalData, jobInput, jobDetails, voice, profile }) {
+  return `
+Du bist ein deutscher Bewerbungsassistent. Erstelle ein Anschreiben als editierbaren Entwurf.
+
+Regeln:
+- Schreibe auf Deutsch.
+- Verwende die Absenderdaten, Empfängerblock, Datum, Betreff, Anrede und Schlussformel.
+- Nutze konkrete Informationen aus Lebenslauf/Unterlagen, aber erfinde keine Arbeitgeber oder Zahlen.
+- Wenn Angaben aus der Stellenanzeige verlangt werden (z. B. Wunschgehalt, Eintrittstermin, Referenznummer), füge sie als Platzhalter mit XXX ein.
+- Schlussformel exakt:
+Mit freundlichen Grüßen
+
+${personalData?.closingName || personalData?.name || 'XXX'}
+- Gib nur den fertigen Anschreiben-Text zurück, keine Erklärung.
+
+Stil: ${voice || 'klar und professionell'}
+
+Absenderdaten:
+${JSON.stringify(personalData ?? {}, null, 2)}
+
+Erkannte Jobdaten:
+${JSON.stringify(jobDetails ?? {}, null, 2)}
+
+Stellenanzeige:
+${jobInput || ''}
+
+Ausgelesene Unterlagen:
+${profile.text || ''}
+`.trim();
+}
+
+async function generateWithProvider({ provider, apiKey, prompt }) {
+  if (provider === 'Anthropic') {
+    return generateAnthropic({ apiKey, prompt });
+  }
+  if (provider === 'Google Gemini') {
+    return generateGemini({ apiKey, prompt });
+  }
+  if (provider === 'Mistral AI') {
+    return generateChatCompletion({
+      url: 'https://api.mistral.ai/v1/chat/completions',
+      apiKey,
+      model: 'mistral-small-latest',
+      prompt,
+    });
+  }
+  if (provider === 'OpenRouter') {
+    return generateChatCompletion({
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      apiKey,
+      model: 'openai/gpt-4o-mini',
+      prompt,
+    });
+  }
+  return generateOpenAI({ apiKey, prompt });
+}
+
+async function generateOpenAI({ apiKey, prompt }) {
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4.1-mini',
+      input: prompt,
+      temperature: 0.4,
+    }),
+  });
+  const data = await parseProviderResponse(response);
+  return data.output_text || data.output?.flatMap((item) => item.content ?? []).map((part) => part.text).filter(Boolean).join('\n') || '';
+}
+
+async function generateAnthropic({ apiKey, prompt }) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-3-5-haiku-latest',
+      max_tokens: 2200,
+      temperature: 0.4,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+  const data = await parseProviderResponse(response);
+  return data.content?.map((part) => part.text).filter(Boolean).join('\n') || '';
+}
+
+async function generateGemini({ apiKey, prompt }) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.4 },
+    }),
+  });
+  const data = await parseProviderResponse(response);
+  return data.candidates?.[0]?.content?.parts?.map((part) => part.text).filter(Boolean).join('\n') || '';
+}
+
+async function generateChatCompletion({ url, apiKey, model, prompt }) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.4,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+  const data = await parseProviderResponse(response);
+  return data.choices?.[0]?.message?.content || '';
+}
+
+async function parseProviderResponse(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data.error?.message || data.message || `KI-Anbieter meldet Fehler ${response.status}.`;
+    throw new Error(message);
+  }
+  return data;
 }
 
 async function readProfileFromDataDir() {
