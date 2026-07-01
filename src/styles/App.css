@@ -391,7 +391,7 @@ textarea:focus {
 
 .big-action {
   width: 100%;
-  margin-top: 2px;
+  margin-top: 10px;
   min-height: 52px;
   font-size: 1.04rem;
 }
