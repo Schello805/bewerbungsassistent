@@ -99,6 +99,7 @@ function ApplicationShell() {
   const [provider, setProvider] = useState(providerOptions[0]);
   const [apiKey, setApiKey] = useState('');
   const [apiKeyProviders, setApiKeyProviders] = useState<string[]>([]);
+  const [apiKeyStatus, setApiKeyStatus] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const wordCount = useMemo(() => draft.trim().split(/\s+/).filter(Boolean).length, [draft]);
@@ -175,10 +176,20 @@ function ApplicationShell() {
   useEffect(() => {
     const legacyApiKey = localStorage.getItem(getApiKeyStorageKey(provider));
     if (!legacyApiKey || apiKeyProviders.includes(provider)) return;
+    const legacyApiKeyValue = legacyApiKey;
 
-    setApiKeyProviders((current) => current.includes(provider) ? current : [...current, provider]);
-    void saveSettings({ provider, apiKey: legacyApiKey });
-    localStorage.removeItem(getApiKeyStorageKey(provider));
+    async function migrateLegacyApiKey() {
+      try {
+        await saveSettings({ provider, apiKey: legacyApiKeyValue });
+        localStorage.removeItem(getApiKeyStorageKey(provider));
+        setApiKeyProviders((current) => current.includes(provider) ? current : [...current, provider]);
+        setApiKeyStatus('Vorhandener API-Key wurde übernommen.');
+      } catch {
+        setApiKeyStatus('API-Key konnte nicht automatisch übernommen werden.');
+      }
+    }
+
+    void migrateLegacyApiKey();
   }, [apiKeyProviders, provider]);
 
   async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string }) {
@@ -200,6 +211,7 @@ function ApplicationShell() {
   function updateProvider(value: string) {
     setProvider(value);
     setApiKey('');
+    setApiKeyStatus('');
     void saveSettings({ provider: value });
   }
 
@@ -210,11 +222,31 @@ function ApplicationShell() {
 
   function updateApiKey(value: string) {
     setApiKey(value);
-    setApiKeyProviders((current) => {
-      const next = current.filter((item) => item !== provider);
-      return value.trim().length > 0 ? [...next, provider] : next;
-    });
-    void saveSettings({ provider, apiKey: value });
+    setApiKeyStatus(value.trim().length > 0 ? 'Noch nicht gespeichert.' : '');
+  }
+
+  async function saveApiKey() {
+    if (!apiKey.trim()) return;
+
+    try {
+      await saveSettings({ provider, apiKey });
+      setApiKeyProviders((current) => current.includes(provider) ? current : [...current, provider]);
+      setApiKey('');
+      setApiKeyStatus('API-Key gespeichert.');
+    } catch {
+      setApiKeyStatus('API-Key konnte nicht gespeichert werden.');
+    }
+  }
+
+  async function removeApiKey() {
+    try {
+      await saveSettings({ provider, apiKey: '' });
+      setApiKey('');
+      setApiKeyProviders((current) => current.filter((item) => item !== provider));
+      setApiKeyStatus('API-Key entfernt.');
+    } catch {
+      setApiKeyStatus('API-Key konnte nicht entfernt werden.');
+    }
   }
 
   async function uploadDocument(event: ChangeEvent<HTMLInputElement>) {
@@ -581,9 +613,14 @@ function ApplicationShell() {
               />
             </label>
             <div className="api-note-row">
-              <p className="field-note">{apiKeyProviders.includes(provider) ? 'API-Key gespeichert.' : 'API-Key eintragen, um KI zu nutzen.'}</p>
+              <p className="field-note">
+                {apiKeyStatus || (apiKeyProviders.includes(provider) ? 'API-Key gespeichert.' : 'API-Key eintragen, um KI zu nutzen.')}
+              </p>
+              {apiKey.trim().length > 0 && (
+                <button type="button" className="text-button" onClick={saveApiKey}>Speichern</button>
+              )}
               {apiKeyProviders.includes(provider) && (
-                <button type="button" className="text-button" onClick={() => updateApiKey('')}>Entfernen</button>
+                <button type="button" className="text-button" onClick={removeApiKey}>Entfernen</button>
               )}
             </div>
           </article>
