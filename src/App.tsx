@@ -300,6 +300,22 @@ function ApplicationShell() {
     setDraft((current) => `${current}\n\nAlternative Formulierung:\nIch bringe eine strukturierte, praxisnahe Arbeitsweise mit und kann mich schnell in neue Aufgaben einarbeiten.`);
   }
 
+  function makeDraftModern() {
+    setDraft((current) => appendEditorNote(current, 'Moderner formulieren', 'Bitte den Text moderner, klarer und weniger förmlich formulieren. Kurze Sätze, aktive Sprache, professionell aber nicht steif.'));
+  }
+
+  function makeDraftDetailed() {
+    setDraft((current) => appendEditorNote(current, 'Detaillierter ausarbeiten', 'Bitte ergänze konkrete Beispiele, messbare Ergebnisse und passendere Bezüge zu meinen Unterlagen. Platzhalter mit XXX stehen lassen, wenn Angaben fehlen.'));
+  }
+
+  function makeDraftConfident() {
+    setDraft((current) => appendEditorNote(current, 'Selbstbewusster formulieren', 'Bitte den Text direkter und überzeugender formulieren. Stärken klar benennen, ohne überheblich zu wirken.'));
+  }
+
+  function makeDraftFormal() {
+    setDraft((current) => appendEditorNote(current, 'Formeller formulieren', 'Bitte den Text klassischer, seriöser und zurückhaltender formulieren. Geeignet für konservative Unternehmen.'));
+  }
+
   async function saveFinalLetter() {
     setLetterStatus('Fertige Version wird gespeichert ...');
     try {
@@ -469,7 +485,11 @@ function ApplicationShell() {
             <div className="editor-toolbar">
               <span>{draft ? `${wordCount} Wörter${activeLetterId ? ' · gespeicherte Version geöffnet' : ''}` : 'Noch kein Anschreiben erstellt'}</span>
               <div className="toolbar-actions">
-                <button type="button" onClick={varyDraft} disabled={!draft}><RefreshCw size={16} /> Variieren</button>
+                <button type="button" onClick={makeDraftModern} disabled={!draft}><RefreshCw size={16} /> Moderner</button>
+                <button type="button" onClick={makeDraftDetailed} disabled={!draft}><RefreshCw size={16} /> Detaillierter</button>
+                <button type="button" onClick={makeDraftConfident} disabled={!draft}><RefreshCw size={16} /> Selbstbewusster</button>
+                <button type="button" onClick={makeDraftFormal} disabled={!draft}><RefreshCw size={16} /> Formeller</button>
+                <button type="button" onClick={varyDraft} disabled={!draft}><RefreshCw size={16} /> Alternative</button>
                 <button type="button" onClick={shortenDraft} disabled={!draft}><Scissors size={16} /> Kürzen</button>
                 <button type="button" onClick={saveFinalLetter} disabled={!draft}><Save size={16} /> Fertig speichern</button>
               </div>
@@ -658,6 +678,17 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
     '',
     personalData.closingName || personalData.name,
   ].filter((line) => line !== undefined).join('\n');
+}
+
+function appendEditorNote(text: string, title: string, instruction: string) {
+  const cleaned = text.replace(/\n\n---\nBearbeitungshinweis:[\s\S]*$/m, '').trim();
+  return [
+    cleaned,
+    '',
+    '---',
+    `Bearbeitungshinweis: ${title}`,
+    instruction,
+  ].join('\n');
 }
 
 function extractRequestedInfo(text: string): RequestedInfo[] {

@@ -614,12 +614,23 @@ textarea:focus {
 
 .editor-toolbar {
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .editor-toolbar > span {
+  padding-top: 0.62rem;
   color: var(--muted);
   font-weight: 900;
+}
+
+.toolbar-actions {
+  justify-content: flex-end;
+  max-width: 760px;
+}
+
+.toolbar-actions button {
+  padding: 0.62rem 0.82rem;
+  font-size: 0.92rem;
 }
 
 .draft-editor {
