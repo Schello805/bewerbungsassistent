@@ -1,4 +1,4 @@
-const githubUrl = 'https://github.com/michael-schellenberger/bewerbungsassistent';
+const githubUrl = 'https://github.com/Schello805/bewerbungsassistent';
 
 export function Footer() {
   return (
