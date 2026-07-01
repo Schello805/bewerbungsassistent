@@ -43,7 +43,7 @@ db.exec(`
 `);
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '120mb' }));
 
 const storage = multer.diskStorage({
   destination: async (_request, _file, callback) => {
@@ -298,6 +298,27 @@ app.delete('/api/letters/:id', (request, response, next) => {
   }
 });
 
+app.get('/api/backup', async (_request, response, next) => {
+  try {
+    const backup = await createBackup();
+    const stamp = new Date().toISOString().slice(0, 10);
+    response
+      .setHeader('content-disposition', `attachment; filename="bewerbungsassistent-backup-${stamp}.json"`)
+      .json(backup);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/backup/restore', async (request, response, next) => {
+  try {
+    await restoreBackup(request.body);
+    response.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/fetch-job', async (request, response, next) => {
   try {
     const url = typeof request.body.url === 'string' ? request.body.url.trim() : '';
@@ -333,6 +354,37 @@ app.post('/api/generate-letter', async (request, response, next) => {
 
     const text = await generateWithProvider({ provider, apiKey, prompt });
     response.json({ text });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/rewrite-letter', async (request, response, next) => {
+  try {
+    const provider = typeof request.body.provider === 'string' ? request.body.provider : 'OpenAI';
+    const requestApiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
+    const apiKey = requestApiKey || getProviderApiKey(provider);
+    const text = typeof request.body.text === 'string' ? request.body.text.trim() : '';
+
+    if (!apiKey) {
+      response.status(400).json({ error: 'Kein API-Key eingetragen.' });
+      return;
+    }
+
+    if (text.length < 20) {
+      response.status(400).json({ error: 'Der Text ist zu kurz zum Überarbeiten.' });
+      return;
+    }
+
+    const prompt = buildRewritePrompt({
+      text,
+      mode: request.body.mode,
+      voice: request.body.voice,
+      personalData: request.body.personalData,
+      jobDetails: request.body.jobDetails,
+    });
+    const rewrittenText = await generateWithProvider({ provider, apiKey, prompt });
+    response.json({ text: rewrittenText || text });
   } catch (error) {
     next(error);
   }
@@ -403,6 +455,84 @@ function getProviderApiKey(provider) {
   return typeof apiKey === 'string' ? apiKey.trim() : '';
 }
 
+async function createBackup() {
+  const settings = Object.fromEntries(db.prepare('SELECT key, value FROM settings').all().map((row) => {
+    try {
+      return [row.key, JSON.parse(row.value)];
+    } catch {
+      return [row.key, row.value];
+    }
+  }));
+  const letters = db.prepare('SELECT id, title, text, size, created_at AS createdAt, updated_at AS updatedAt FROM letters ORDER BY updated_at DESC').all();
+  const entries = await fs.readdir(dataDir, { withFileTypes: true });
+  const documents = await Promise.all(entries
+    .filter((entry) => entry.isFile() && entry.name !== '.gitkeep')
+    .map(async (entry) => {
+      const filePath = path.join(dataDir, entry.name);
+      const stats = await fs.stat(filePath);
+      const content = await fs.readFile(filePath);
+      return {
+        name: entry.name,
+        type: inferDocumentType(entry.name),
+        size: stats.size,
+        updatedAt: stats.mtime.toISOString(),
+        contentBase64: content.toString('base64'),
+      };
+    }));
+
+  return {
+    app: 'bewerbungsassistent',
+    version: 1,
+    createdAt: new Date().toISOString(),
+    settings,
+    letters,
+    documents,
+  };
+}
+
+async function restoreBackup(backup) {
+  if (!backup || backup.app !== 'bewerbungsassistent' || !Array.isArray(backup.documents) || !Array.isArray(backup.letters)) {
+    throw new Error('Ungültige Backup-Datei.');
+  }
+
+  const settings = backup.settings && typeof backup.settings === 'object' ? backup.settings : {};
+  const restoreSettings = db.transaction((entries) => {
+    for (const [key, value] of Object.entries(entries)) {
+      setSetting(key, value);
+    }
+  });
+  restoreSettings(settings);
+
+  for (const document of backup.documents) {
+    if (!document?.name || !document?.contentBase64) continue;
+    const fileName = sanitizeFileName(document.name);
+    const filePath = path.join(dataDir, fileName);
+    if (!filePath.startsWith(dataDir)) continue;
+    await fs.writeFile(filePath, Buffer.from(document.contentBase64, 'base64'));
+  }
+
+  const restoreLetters = db.transaction((letters) => {
+    for (const letter of letters) {
+      if (!letter?.id || !letter?.text) continue;
+      const title = typeof letter.title === 'string' && letter.title.trim() ? letter.title.trim() : 'anschreiben';
+      const text = String(letter.text);
+      const size = Buffer.byteLength(text, 'utf8');
+      const createdAt = letter.createdAt || letter.updatedAt || new Date().toISOString();
+      const updatedAt = letter.updatedAt || createdAt;
+      db.prepare(`
+        INSERT INTO letters (id, title, text, size, created_at, updated_at)
+        VALUES (@id, @title, @text, @size, @createdAt, @updatedAt)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          text = excluded.text,
+          size = excluded.size,
+          updated_at = excluded.updated_at
+      `).run({ id: sanitizeFileName(letter.id), title, text, size, createdAt, updatedAt });
+    }
+  });
+  restoreLetters(backup.letters);
+}
+
 async function fetchJobPosting(url) {
   const response = await fetch(url, {
     headers: {
@@ -459,6 +589,41 @@ ${jobInput || ''}
 
 Ausgelesene Unterlagen:
 ${profile.text || ''}
+`.trim();
+}
+
+function buildRewritePrompt({ text, mode, voice, personalData, jobDetails }) {
+  const instructions = {
+    modern: 'Formuliere moderner, klarer, aktiver und weniger steif. Der Text bleibt professionell.',
+    detailed: 'Arbeite den Text detaillierter aus. Ergänze passendere Bezüge, konkretere Argumente und bessere Übergänge. Erfinde keine Fakten.',
+    confident: 'Formuliere fordernder und selbstbewusster. Stärken sollen klarer sichtbar werden, aber nicht überheblich klingen.',
+    formal: 'Formuliere klassischer, formeller und sehr seriös. Geeignet für konservative Arbeitgeber.',
+    alternative: 'Erstelle eine alternative Fassung mit anderer Satzstruktur und frischerem Einstieg, ohne Inhalt oder Fakten zu verfälschen.',
+    shorten: 'Kürze den Text deutlich um etwa 20 bis 30 Prozent. Erhalte alle wichtigen Fakten, Platzhalter und Kontaktdaten.',
+  };
+
+  return `
+Du bist ein deutscher Bewerbungsassistent. Überarbeite das vorhandene Anschreiben.
+
+Aufgabe:
+${instructions[mode] || instructions.modern}
+
+Regeln:
+- Gib ausschließlich den vollständigen überarbeiteten Anschreiben-Text zurück.
+- Erhalte Absenderblock, Empfängerblock, Datum, Betreff, Anrede und Schlussformel.
+- Lasse Platzhalter wie XXX erhalten.
+- Erfinde keine neuen Arbeitgeber, Zahlen, Abschlüsse oder Erfahrungen.
+- Nutze Deutsch.
+- Zielstil: ${voice || 'klar und professionell'}.
+
+Absenderdaten:
+${JSON.stringify(personalData ?? {}, null, 2)}
+
+Erkannte Jobdaten:
+${JSON.stringify(jobDetails ?? {}, null, 2)}
+
+Aktueller Text:
+${text}
 `.trim();
 }
 
