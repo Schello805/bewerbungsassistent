@@ -206,10 +206,17 @@ code {
 }
 
 .create-panel {
-  min-height: 420px;
+  min-height: 360px;
   background:
     linear-gradient(135deg, rgba(103, 80, 245, 0.13), rgba(47, 183, 232, 0.09)),
     rgba(255, 253, 248, 0.9);
+}
+
+.create-panel h1 {
+  max-width: 620px;
+  margin-bottom: 16px;
+  font-size: clamp(2rem, 3.2vw, 3rem);
+  line-height: 1.03;
 }
 
 .master-data-panel {
@@ -227,7 +234,7 @@ code {
 }
 
 .analysis-panel {
-  min-height: 420px;
+  min-height: 360px;
   justify-content: center;
   background:
     linear-gradient(135deg, rgba(255, 176, 32, 0.13), rgba(15, 159, 143, 0.08)),
@@ -326,7 +333,7 @@ textarea {
 
 .create-panel textarea {
   height: 100%;
-  min-height: 206px;
+  min-height: 136px;
 }
 
 input:focus,
