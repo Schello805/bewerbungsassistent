@@ -322,10 +322,10 @@ function ApplicationShell() {
   }
 
   async function downloadDocx() {
-    const { AlignmentType, Document, Packer, Paragraph, TextRun } = await import('docx');
+    const { AlignmentType, BorderStyle, Document, Packer, Paragraph, TextRun } = await import('docx');
     const lines = draft.split('\n');
     const subjectIndex = lines.findIndex((line) => line.trim().toLowerCase().startsWith('bewerbung'));
-    const dateIndex = lines.findIndex((line) => /\b\d{2}\.\d{2}\.\d{4}\b/.test(line));
+    const dateIndex = lines.findIndex((line) => line.trim().startsWith('>>') || /\b\d{2}\.\d{2}\.\d{4}\b/.test(line));
     const doc = new Document({
       sections: [{
         properties: {
@@ -334,16 +334,20 @@ function ApplicationShell() {
           },
         },
         children: lines.map((line, index) => new Paragraph({
+          border: line.includes('────') ? {
+            bottom: { style: BorderStyle.SINGLE, size: 8, color: '1F4E79' },
+          } : undefined,
           alignment: index === dateIndex ? AlignmentType.RIGHT : AlignmentType.LEFT,
           children: [new TextRun({
-            text: line || ' ',
+            text: line.includes('────') ? ' ' : line.replace(/^>>\s*/, '') || ' ',
             bold: index === 0 || index === subjectIndex,
             italics: index === 1,
-            size: index === subjectIndex ? 24 : 22,
+            color: index === 2 ? '44546A' : '000000',
+            size: index === 0 ? 28 : index === subjectIndex ? 24 : 22,
           })],
           spacing: {
             before: index === subjectIndex ? 260 : 0,
-            after: line.trim() === '' ? 100 : index === subjectIndex ? 260 : 170,
+            after: line.includes('────') ? 260 : line.trim() === '' ? 100 : index === subjectIndex ? 260 : 170,
           },
         })),
       }],
@@ -622,18 +626,23 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
   const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
   const requestedParagraphs = createRequestedInfoParagraphs(jobDetails.requestedInfo);
+  const contactLine = [
+    personalData.email,
+    personalData.phone,
+    [personalData.street, personalData.city].filter(Boolean).join(', '),
+    personalData.website,
+  ].filter(Boolean).join(' · ');
 
   return [
     personalData.name,
     personalData.qualification,
-    [personalData.email, personalData.phone].filter(Boolean).join(' · '),
-    [personalData.street, personalData.city].filter(Boolean).join(' · '),
-    personalData.website,
+    contactLine,
+    '────────────────────────────────────────',
     '',
     jobDetails.recipient,
     jobDetails.address,
     '',
-    `${personalData.location}, ${date}`,
+    `>> ${personalData.location}, ${date}`,
     '',
     jobDetails.subject,
     '',
