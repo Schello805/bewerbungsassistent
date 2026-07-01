@@ -79,19 +79,21 @@ app.get('/api/profile', async (_request, response, next) => {
   }
 });
 
-app.post('/api/documents', upload.single('file'), (request, response) => {
-  if (!request.file) {
-    response.status(400).json({ error: 'Keine Datei empfangen.' });
+app.post('/api/documents', upload.array('files', 30), (request, response) => {
+  const files = Array.isArray(request.files) ? request.files : [];
+
+  if (files.length === 0) {
+    response.status(400).json({ error: 'Keine Dateien empfangen.' });
     return;
   }
 
   response.status(201).json({
-    document: {
-      id: request.file.filename,
-      name: request.file.filename,
-      type: inferDocumentType(request.file.filename),
-      size: request.file.size,
-    },
+    documents: files.map((file) => ({
+      id: file.filename,
+      name: file.filename,
+      type: inferDocumentType(file.filename),
+      size: file.size,
+    })),
   });
 });
 

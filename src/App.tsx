@@ -105,12 +105,14 @@ function ApplicationShell() {
   }, [loadDocuments, loadLetters]);
 
   async function uploadDocument(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
 
     const formData = new FormData();
-    formData.append('file', file);
-    setDocumentStatus(`${file.name} wird gespeichert ...`);
+    files.forEach((file) => formData.append('files', file));
+    setDocumentStatus(files.length === 1
+      ? `${files[0].name} wird gespeichert ...`
+      : `${files.length} Dateien werden gespeichert ...`);
 
     try {
       const response = await fetch('/api/documents', {
@@ -284,8 +286,8 @@ function ApplicationShell() {
             <div className="panel">
             <div className="panel-header">
               <h3>Dokumente</h3>
-              <button type="button" onClick={() => fileInputRef.current?.click()}><FileUp size={16} /> Datei auswählen</button>
-              <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md,.rtf" onChange={uploadDocument} className="visually-hidden" />
+              <button type="button" onClick={() => fileInputRef.current?.click()}><FileUp size={16} /> Dateien auswählen</button>
+              <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md,.rtf" multiple onChange={uploadDocument} className="visually-hidden" />
             </div>
             <p className="document-status">{documentStatus}</p>
             <ul className="document-list">

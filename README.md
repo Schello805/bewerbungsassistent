@@ -73,7 +73,7 @@ datenbasis/
   master-profil.md
 ```
 
-Die App enthält ein lokales Backend. Uploads und Löschvorgänge in der Oberfläche schreiben direkt in den Ordner `datenbasis/`. Fertige Anschreiben werden als Textdateien im Ordner `anschreiben/` gespeichert.
+Die App enthält ein lokales Backend. Einzelne oder mehrere Uploads und Löschvorgänge in der Oberfläche schreiben direkt in den Ordner `datenbasis/`. Fertige Anschreiben werden als Textdateien im Ordner `anschreiben/` gespeichert.
 
 Persönliche Dateien in `datenbasis/` und gespeicherte Anschreiben in `anschreiben/` werden nicht zu GitHub hochgeladen. Nur die `.gitkeep`-Dateien halten die Ordnerstruktur im Repository.
 
