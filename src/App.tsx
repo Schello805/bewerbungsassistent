@@ -419,7 +419,6 @@ function ApplicationShell() {
             <img src="/logo-bewerbungsassistent.png" alt="" />
             Bewerbungsassistent
           </a>
-          <span className="header-badge">Netzwerkfähig · SQLite · KI</span>
         </nav>
       </header>
 
@@ -445,7 +444,6 @@ function ApplicationShell() {
           <aside id="stammdaten" className="panel master-data-panel">
             <div className="panel-header compact-header">
               <h2>Stammdaten</h2>
-              <span>zentral gespeichert</span>
             </div>
             <div className="form-grid compact-form">
               <TextField label="Name" value={personalData.name} onChange={(value) => updatePersonalData('name', value)} />
@@ -492,7 +490,7 @@ function ApplicationShell() {
             </ul>
           </article>
 
-          <article className="panel">
+          <article className="panel ai-panel">
             <h2>KI</h2>
             <div className="settings-grid">
               <label>
@@ -509,7 +507,7 @@ function ApplicationShell() {
               </label>
             </div>
             <label className="api-field">
-              <KeyRound size={18} /> API-Key
+              <span><KeyRound size={18} /> API-Key</span>
               <input type="password" placeholder={`${provider} API-Key`} value={apiKey} onChange={(event) => updateApiKey(event.target.value)} autoComplete="off" />
             </label>
             <p className="field-note">Wird nur lokal in diesem Browser gespeichert.</p>
