@@ -53,6 +53,7 @@ function ApplicationShell() {
   const [letterStatus, setLetterStatus] = useState('');
   const [voice, setVoice] = useState(voiceOptions[0]);
   const [provider, setProvider] = useState(providerOptions[0]);
+  const [apiKey, setApiKey] = useState('');
   const [jobText, setJobText] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [draft, setDraft] = useState('Sehr geehrte Damen und Herren,\n\nmit großem Interesse habe ich Ihre Ausschreibung gelesen. Besonders die Kombination aus Verantwortung, Gestaltungsspielraum und moderner Zusammenarbeit passt sehr gut zu meinem Profil.\n\nIn meinen bisherigen Stationen konnte ich vergleichbare Aufgaben strukturiert, zuverlässig und mit einem klaren Blick für Ergebnisse umsetzen. Meine Unterlagen zeigen dabei sowohl fachliche Erfahrung als auch die Fähigkeit, mich schnell in neue Themen einzuarbeiten.\n\nGerne möchte ich in einem persönlichen Gespräch zeigen, wie ich Ihr Team konkret unterstützen kann.\n\nMit freundlichen Grüßen\nMichael Schellenberger');
@@ -103,6 +104,22 @@ function ApplicationShell() {
     void loadDocuments();
     void loadLetters();
   }, [loadDocuments, loadLetters]);
+
+  useEffect(() => {
+    setApiKey(localStorage.getItem(getApiKeyStorageKey(provider)) ?? '');
+  }, [provider]);
+
+  function updateApiKey(value: string) {
+    setApiKey(value);
+    const storageKey = getApiKeyStorageKey(provider);
+
+    if (value.trim().length === 0) {
+      localStorage.removeItem(storageKey);
+      return;
+    }
+
+    localStorage.setItem(storageKey, value);
+  }
 
   async function uploadDocument(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -280,8 +297,16 @@ function ApplicationShell() {
             </div>
             <label className="api-field">
               <KeyRound size={18} /> API-Key lokal eintragen
-              <input type="password" placeholder={`${provider} API-Key`} aria-label="API-Key" />
+              <input
+                type="password"
+                placeholder={`${provider} API-Key`}
+                aria-label="API-Key"
+                value={apiKey}
+                onChange={(event) => updateApiKey(event.target.value)}
+                autoComplete="off"
+              />
             </label>
+            <p className="field-note">Der API-Key wird nur lokal in diesem Browser gespeichert.</p>
           </div>
             <div className="panel">
             <div className="panel-header">
@@ -458,6 +483,10 @@ function extractImportantPhrases(text: string, limit: number) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([word]) => word);
+}
+
+function getApiKeyStorageKey(provider: string) {
+  return `bewerbungsassistent.apiKey.${provider}`;
 }
 
 function AnalysisList({ title, items, warning = false }: { title: string; items: string[]; warning?: boolean }) {
