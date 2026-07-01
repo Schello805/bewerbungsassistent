@@ -419,11 +419,7 @@ function ApplicationShell() {
             <img src="/logo-bewerbungsassistent.png" alt="" />
             Bewerbungsassistent
           </a>
-          <div>
-            <a href="#create">Erstellen</a>
-            <a href="#stammdaten">Stammdaten</a>
-            <a href="#editor">Bearbeiten</a>
-          </div>
+          <span className="header-badge">Netzwerkfähig · SQLite · KI</span>
         </nav>
       </header>
 
@@ -449,7 +445,7 @@ function ApplicationShell() {
           <aside id="stammdaten" className="panel master-data-panel">
             <div className="panel-header compact-header">
               <h2>Stammdaten</h2>
-              <span>lokal gespeichert</span>
+              <span>zentral gespeichert</span>
             </div>
             <div className="form-grid compact-form">
               <TextField label="Name" value={personalData.name} onChange={(value) => updatePersonalData('name', value)} />
