@@ -447,6 +447,30 @@ textarea:focus {
   min-width: 0;
 }
 
+.api-note-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.api-note-row .field-note {
+  margin: 0;
+}
+
+.text-button {
+  border-radius: 999px;
+  background: transparent;
+  color: var(--brand-dark);
+  font-weight: 900;
+  padding: 0.32rem 0.55rem;
+}
+
+.text-button:hover {
+  background: var(--brand-soft);
+}
+
 .ai-panel {
   justify-content: flex-start;
 }
