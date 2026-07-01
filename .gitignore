@@ -10,3 +10,5 @@ datenbasis/*
 !datenbasis/.gitkeep
 anschreiben/*
 !anschreiben/.gitkeep
+data/*
+!data/.gitkeep

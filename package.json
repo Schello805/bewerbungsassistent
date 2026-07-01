@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "better-sqlite3": "^12.11.1",
     "clsx": "latest",
     "docx": "latest",
     "express": "^5.2.1",
