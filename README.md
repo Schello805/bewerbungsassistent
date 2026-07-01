@@ -10,12 +10,15 @@ Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bl
 - mehrere Dateien gleichzeitig hochladen
 - sichtbares Upload-Feedback mit Fortschrittsanimation
 - Stellenanzeige oder Link einfügen
+- Stellenanzeigen-Link serverseitig auslesen
+- Anschreiben per OpenAI, Anthropic, Gemini, Mistral oder OpenRouter erzeugen
 - Anschreiben mit Absenderdaten, Empfängerblock, Betreff und Schlussformel erstellen
 - gewünschte Angaben wie Wunschgehalt, Eintrittstermin oder Referenznummer als Platzhalter erkennen
 - Anschreiben direkt bearbeiten
 - fertige Versionen lokal speichern
 - fertige Versionen zentral in SQLite speichern
 - DOCX herunterladen oder Text kopieren
+- gespeicherte Anschreiben öffnen, weiterbearbeiten und löschen
 
 ## Installation auf Debian 13 oder Ubuntu 24.04
 
