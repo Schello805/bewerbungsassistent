@@ -319,6 +319,12 @@ textarea:focus {
   margin-top: 12px;
 }
 
+.field-note {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .document-list {
   display: grid;
   gap: 12px;
