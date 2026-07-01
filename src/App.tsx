@@ -94,6 +94,7 @@ function ApplicationShell() {
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeLetterId, setActiveLetterId] = useState<string | null>(null);
+  const [view, setView] = useState<'apply' | 'settings'>('apply');
   const [voice, setVoice] = useState(voiceOptions[0]);
   const [provider, setProvider] = useState(providerOptions[0]);
   const [apiKey, setApiKey] = useState('');
@@ -419,11 +420,17 @@ function ApplicationShell() {
             <img src="/logo-bewerbungsassistent.png" alt="" />
             Bewerbungsassistent
           </a>
+          <div className="view-switch" aria-label="Ansicht wechseln">
+            <button type="button" className={view === 'apply' ? 'active' : ''} onClick={() => setView('apply')}>Bewerbung</button>
+            <button type="button" className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Einstellungen</button>
+          </div>
         </nav>
       </header>
 
       <main className="app-main">
-        <section id="create" className="create-grid">
+        {view === 'apply' ? (
+        <>
+        <section id="create" className="create-grid apply-grid">
           <article className="panel create-panel">
             <p className="eyebrow">Anschreiben</p>
             <h1>Link oder Stellenanzeige einfügen</h1>
@@ -441,77 +448,16 @@ function ApplicationShell() {
             </button>
           </article>
 
-          <aside id="stammdaten" className="panel master-data-panel">
-            <div className="panel-header compact-header">
-              <h2>Stammdaten</h2>
-            </div>
-            <div className="form-grid compact-form">
-              <TextField label="Name" value={personalData.name} onChange={(value) => updatePersonalData('name', value)} />
-              <TextField label="Qualifikation" value={personalData.qualification} onChange={(value) => updatePersonalData('qualification', value)} />
-              <TextField label="E-Mail" value={personalData.email} onChange={(value) => updatePersonalData('email', value)} />
-              <TextField label="Telefon" value={personalData.phone} onChange={(value) => updatePersonalData('phone', value)} />
-              <TextField label="Straße" value={personalData.street} onChange={(value) => updatePersonalData('street', value)} />
-              <TextField label="PLZ Ort" value={personalData.city} onChange={(value) => updatePersonalData('city', value)} />
-              <TextField label="Website" value={personalData.website} onChange={(value) => updatePersonalData('website', value)} />
-              <TextField label="Absendeort" value={personalData.location} onChange={(value) => updatePersonalData('location', value)} />
+          <aside className="panel analysis-panel">
+            <p className="eyebrow">Analyse</p>
+            <h2>{jobInput.trim() ? jobDetails.subject : 'Bereit für die Stellenanzeige'}</h2>
+            <p>{jobInput.trim() ? 'Empfänger, Betreff und gewünschte Zusatzangaben werden aus Link oder Text abgeleitet.' : 'Link oder Text einfügen, danach wird das Anschreiben erstellt.'}</p>
+            <div className="analysis-summary">
+              <span>{documents.length} Unterlagen</span>
+              <span>{apiKey ? provider : 'Lokale Vorlage'}</span>
+              <span>{voice}</span>
             </div>
           </aside>
-        </section>
-
-        <section className="section slim-grid">
-          <article className={isUploading ? 'panel upload-panel is-uploading' : 'panel upload-panel'}>
-            <div className="panel-header">
-              <div>
-                <h2>Unterlagen</h2>
-                <p className="document-status">{documentStatus}</p>
-              </div>
-              <button type="button" className="upload-button" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
-                <span className="upload-icon-wrap"><FileUp size={16} /></span>
-                {isUploading ? 'Upload läuft ...' : 'Dateien auswählen'}
-              </button>
-              <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md,.rtf" multiple onChange={uploadDocument} className="visually-hidden" />
-            </div>
-            {isUploading && (
-              <div className="upload-progress" aria-label="Upload läuft">
-                <span />
-              </div>
-            )}
-            <ul className="document-list">
-              {documents.map((document) => (
-                <li key={document.id}>
-                  <span>
-                    <strong>{document.type}</strong>
-                    {document.name}
-                    {typeof document.size === 'number' && <small>{formatFileSize(document.size)}</small>}
-                  </span>
-                  <button type="button" onClick={() => removeDocument(document.id)} aria-label={`${document.name} löschen`}><Trash2 size={16} /></button>
-                </li>
-              ))}
-            </ul>
-          </article>
-
-          <article className="panel ai-panel">
-            <h2>KI</h2>
-            <div className="settings-grid">
-              <label>
-                Anbieter
-                <select value={provider} onChange={(event) => updateProvider(event.target.value)}>
-                  {providerOptions.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              </label>
-              <label>
-                Stil
-                <select value={voice} onChange={(event) => updateVoice(event.target.value)}>
-                  {voiceOptions.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              </label>
-            </div>
-            <label className="api-field">
-              <span><KeyRound size={18} /> API-Key</span>
-              <input type="password" placeholder={`${provider} API-Key`} value={apiKey} onChange={(event) => updateApiKey(event.target.value)} autoComplete="off" />
-            </label>
-            <p className="field-note">Wird nur lokal in diesem Browser gespeichert.</p>
-          </article>
         </section>
 
         <section id="editor" className="section editor-section">
@@ -558,6 +504,80 @@ function ApplicationShell() {
             </section>
           </div>
         </section>
+        </>
+        ) : (
+        <section className="settings-page">
+          <article id="stammdaten" className="panel master-data-panel">
+            <div className="panel-header compact-header">
+              <h2>Stammdaten</h2>
+            </div>
+            <div className="form-grid compact-form">
+              <TextField label="Name" value={personalData.name} onChange={(value) => updatePersonalData('name', value)} />
+              <TextField label="Qualifikation" value={personalData.qualification} onChange={(value) => updatePersonalData('qualification', value)} />
+              <TextField label="E-Mail" value={personalData.email} onChange={(value) => updatePersonalData('email', value)} />
+              <TextField label="Telefon" value={personalData.phone} onChange={(value) => updatePersonalData('phone', value)} />
+              <TextField label="Straße" value={personalData.street} onChange={(value) => updatePersonalData('street', value)} />
+              <TextField label="PLZ Ort" value={personalData.city} onChange={(value) => updatePersonalData('city', value)} />
+              <TextField label="Website" value={personalData.website} onChange={(value) => updatePersonalData('website', value)} />
+              <TextField label="Absendeort" value={personalData.location} onChange={(value) => updatePersonalData('location', value)} />
+            </div>
+          </article>
+
+          <article className="panel ai-panel">
+            <h2>KI</h2>
+            <div className="settings-grid">
+              <label>
+                Anbieter
+                <select value={provider} onChange={(event) => updateProvider(event.target.value)}>
+                  {providerOptions.map((option) => <option key={option}>{option}</option>)}
+                </select>
+              </label>
+              <label>
+                Stil
+                <select value={voice} onChange={(event) => updateVoice(event.target.value)}>
+                  {voiceOptions.map((option) => <option key={option}>{option}</option>)}
+                </select>
+              </label>
+            </div>
+            <label className="api-field">
+              <span><KeyRound size={18} /> API-Key</span>
+              <input type="password" placeholder={`${provider} API-Key`} value={apiKey} onChange={(event) => updateApiKey(event.target.value)} autoComplete="off" />
+            </label>
+            <p className="field-note">Wird nur in diesem Browser gespeichert.</p>
+          </article>
+
+          <article className={isUploading ? 'panel upload-panel is-uploading' : 'panel upload-panel'}>
+            <div className="panel-header">
+              <div>
+                <h2>Unterlagen</h2>
+                <p className="document-status">{documentStatus}</p>
+              </div>
+              <button type="button" className="upload-button" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                <span className="upload-icon-wrap"><FileUp size={16} /></span>
+                {isUploading ? 'Upload läuft ...' : 'Dateien auswählen'}
+              </button>
+              <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md,.rtf" multiple onChange={uploadDocument} className="visually-hidden" />
+            </div>
+            {isUploading && (
+              <div className="upload-progress" aria-label="Upload läuft">
+                <span />
+              </div>
+            )}
+            <ul className="document-list">
+              {documents.map((document) => (
+                <li key={document.id}>
+                  <span>
+                    <strong>{document.type}</strong>
+                    {document.name}
+                    {typeof document.size === 'number' && <small>{formatFileSize(document.size)}</small>}
+                  </span>
+                  <button type="button" onClick={() => removeDocument(document.id)} aria-label={`${document.name} löschen`}><Trash2 size={16} /></button>
+                </li>
+              ))}
+            </ul>
+          </article>
+        </section>
+        )}
       </main>
 
       <Footer />

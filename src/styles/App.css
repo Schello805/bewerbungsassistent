@@ -95,6 +95,7 @@ code {
 }
 
 .topbar div,
+.view-switch,
 .panel-header,
 .editor-toolbar,
 .toolbar-actions,
@@ -104,6 +105,27 @@ code {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.view-switch {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 4px;
+}
+
+.view-switch button {
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.52rem 0.86rem;
+  font-weight: 900;
+}
+
+.view-switch button.active {
+  background: var(--ink);
+  color: white;
+  box-shadow: 0 10px 24px rgba(23, 32, 51, 0.16);
 }
 
 .brand {
@@ -138,6 +160,21 @@ code {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 22px;
   align-items: stretch;
+}
+
+.apply-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+}
+
+.settings-page {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  align-items: stretch;
+}
+
+.settings-page .master-data-panel {
+  grid-row: span 2;
 }
 
 .section {
@@ -178,6 +215,14 @@ code {
   min-height: 240px;
   background:
     linear-gradient(135deg, rgba(47, 183, 232, 0.11), rgba(103, 80, 245, 0.06)),
+    rgba(255, 253, 248, 0.9);
+}
+
+.analysis-panel {
+  min-height: 420px;
+  justify-content: center;
+  background:
+    linear-gradient(135deg, rgba(255, 176, 32, 0.13), rgba(15, 159, 143, 0.08)),
     rgba(255, 253, 248, 0.9);
 }
 
@@ -395,7 +440,7 @@ textarea:focus {
 }
 
 .ai-panel {
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .ai-panel h2 {
@@ -404,6 +449,23 @@ textarea:focus {
 
 .ai-panel .settings-grid {
   margin-bottom: 2px;
+}
+
+.analysis-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.analysis-summary span {
+  border: 1px solid rgba(103, 80, 245, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.66);
+  color: var(--ink);
+  padding: 0.55rem 0.76rem;
+  font-size: 0.88rem;
+  font-weight: 900;
 }
 
 .panel-header {
@@ -691,9 +753,15 @@ textarea:focus {
 @media (max-width: 920px) {
   .create-grid,
   .slim-grid,
+  .apply-grid,
+  .settings-page,
   .form-grid,
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-page .master-data-panel {
+    grid-row: auto;
   }
 
   .api-field {
