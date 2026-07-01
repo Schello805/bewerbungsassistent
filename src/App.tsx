@@ -53,7 +53,10 @@ type JobDetails = {
   salutation: string;
   company: string;
   title: string;
+  requestedInfo: RequestedInfo[];
 };
+
+type RequestedInfo = 'salary' | 'startDate' | 'availability' | 'reference' | 'documents' | 'motivation';
 
 const defaultPersonalData: PersonalData = {
   name: 'Michael Schellenberger',
@@ -446,6 +449,7 @@ function extractJobDetails(input: string): JobDetails {
     salutation: contact ? `Sehr geehrte${contact.toLowerCase().includes('herr') ? 'r' : ''} ${contact.replace(/^(frau|herr)\s+/i, '')},` : 'Sehr geehrte Damen und Herren,',
     company: companyFromText || companyFromUrl,
     title,
+    requestedInfo: extractRequestedInfo(text),
   };
 }
 
@@ -455,6 +459,7 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
   const cvSummary = profile.documents.find((document) => document.type === 'Lebenslauf')?.summary ?? profile.documents[0]?.summary ?? '';
   const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
+  const requestedParagraphs = createRequestedInfoParagraphs(jobDetails.requestedInfo);
 
   return [
     personalData.name,
@@ -475,12 +480,42 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
     `mit großem Interesse bewerbe ich mich${titleReference}${companyReference}.`,
     keywords ? `Aus meinem Lebenslauf bringe ich besonders folgende Erfahrungen mit: ${keywords}.` : 'Meine bisherigen Unterlagen zeigen eine strukturierte und zuverlässige Arbeitsweise.',
     cvSummary ? `Relevant aus meiner Datenbasis: ${cvSummary}` : '',
+    ...requestedParagraphs,
     `Der gewünschte Stil ist: ${voice}. Bitte diesen Entwurf vor dem Versand prüfen und persönliche Beispiele ergänzen.`,
     '',
     'Mit freundlichen Grüßen',
     '',
     personalData.closingName || personalData.name,
   ].filter((line) => line !== undefined).join('\n');
+}
+
+function extractRequestedInfo(text: string): RequestedInfo[] {
+  const normalized = text.toLowerCase();
+  const checks: Array<[RequestedInfo, RegExp]> = [
+    ['salary', /(gehaltsvorstellung|wunschgehalt|gehaltswunsch|jahresgehalt|gehaltsangabe|gehaltsrahmen|salary expectation)/i],
+    ['startDate', /(eintrittstermin|starttermin|frühestmöglichen eintritt|frühestmöglicher eintritt|verfügbarkeit ab|startdatum)/i],
+    ['availability', /(kündigungsfrist|verfügbarkeit|verfügbar|availability)/i],
+    ['reference', /(referenznummer|kennziffer|job[- ]?id|stellen[- ]?id|ausschreibungsnummer|reference number)/i],
+    ['documents', /(vollständige unterlagen|zeugnisse|zertifikate|arbeitsproben|anlagen|portfolio)/i],
+    ['motivation', /(motivationsschreiben|motivation|warum sie|warum du|begründung)/i],
+  ];
+
+  return checks
+    .filter(([, pattern]) => pattern.test(normalized))
+    .map(([info]) => info);
+}
+
+function createRequestedInfoParagraphs(requestedInfo: RequestedInfo[]) {
+  const paragraphs: Record<RequestedInfo, string> = {
+    salary: 'Meine Gehaltsvorstellung liegt bei XXX EUR brutto jährlich.',
+    startDate: 'Mein frühestmöglicher Eintrittstermin ist der XXX.',
+    availability: 'Meine aktuelle Kündigungsfrist beträgt XXX; ich bin voraussichtlich ab XXX verfügbar.',
+    reference: 'Die in der Ausschreibung genannte Referenznummer/Kennziffer lautet: XXX.',
+    documents: 'Die gewünschten Anlagen und Nachweise reiche ich vollständig ein: XXX.',
+    motivation: 'Meine besondere Motivation für diese Position ist XXX.',
+  };
+
+  return requestedInfo.map((info) => paragraphs[info]);
 }
 
 function extractUrl(text: string) {

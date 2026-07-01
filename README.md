@@ -10,6 +10,7 @@ Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bl
 - sichtbares Upload-Feedback mit Fortschrittsanimation
 - Stellenanzeige oder Link einfügen
 - Anschreiben mit Absenderdaten, Empfängerblock, Betreff und Schlussformel erstellen
+- gewünschte Angaben wie Wunschgehalt, Eintrittstermin oder Referenznummer als Platzhalter erkennen
 - Anschreiben direkt bearbeiten
 - fertige Versionen lokal speichern
 - DOCX herunterladen oder Text kopieren
