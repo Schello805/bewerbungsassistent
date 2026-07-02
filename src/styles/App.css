@@ -404,6 +404,17 @@ textarea:focus {
   background: linear-gradient(135deg, var(--success-dark), var(--success));
 }
 
+.google {
+  border: 1px solid rgba(66, 133, 244, 0.22);
+  background: linear-gradient(135deg, #4285f4, #34a853);
+  color: white;
+  box-shadow: 0 14px 34px rgba(66, 133, 244, 0.2);
+}
+
+.google:hover {
+  background: linear-gradient(135deg, #3367d6, #188038);
+}
+
 .secondary,
 .panel-header button,
 .editor-toolbar button {
@@ -492,6 +503,29 @@ textarea:focus {
 
 .text-button:hover {
   background: var(--brand-soft);
+}
+
+.provider-key-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.provider-key-list span {
+  border: 1px solid #d9dee8;
+  border-radius: 999px;
+  background: #f3f5f9;
+  color: #667085;
+  padding: 0.34rem 0.58rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.provider-key-list .is-stored {
+  border-color: rgba(22, 163, 74, 0.28);
+  background: rgba(22, 163, 74, 0.1);
+  color: var(--success-dark);
 }
 
 .ai-panel {
