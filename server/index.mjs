@@ -618,7 +618,7 @@ async function fetchJobPosting(url) {
 function buildAiPrompt({ personalData, jobInput, jobDetails, voice, profile }) {
   const profileContext = buildProfileContext(profile);
   return `
-Du bist ein deutscher Bewerbungsassistent. Erstelle ein Anschreiben als editierbaren Entwurf.
+Du bist ein erfahrener deutscher Bewerbungscoach. Erstelle ein überzeugendes, konkretes Anschreiben als editierbaren Entwurf.
 
 Regeln:
 - Schreibe auf Deutsch.
@@ -629,12 +629,22 @@ Regeln:
 - Wenn Angaben aus der Stellenanzeige verlangt werden (z. B. Wunschgehalt, Eintrittstermin, Referenznummer), füge sie als Platzhalter mit XXX ein.
 - Wenn Firma, Ansprechpartner oder Adresse unbekannt sind, nutze neutrale Platzhalter mit XXX statt Jobbörsen-Namen wie Xing, LinkedIn oder StepStone.
 - Der Betreff darf kein Markdown enthalten.
+- Das Anschreiben soll substanziell sein: etwa 230 bis 360 Wörter im Haupttext, nicht nur drei generische Sätze.
+- Schreibe keine Floskelliste. Jeder Absatz muss einen Zweck haben und zur Stelle passen.
+- Nutze "ich" natürlich, aber nicht in jedem Satz am Anfang.
 - Schlussformel exakt:
 Mit freundlichen Grüßen
 
 ${personalData?.closingName || personalData?.name || 'XXX'}
 - Gib nur den fertigen Anschreiben-Text zurück, keine Erklärung.
 - Schreibe niemals Meta-Sätze wie "Der gewünschte Stil ist", "Relevant aus meiner Datenbasis", "Bitte diesen Entwurf prüfen", "Ausgelesene Unterlagen", "Strukturierte Profilanalyse" oder Hinweise über diesen Prompt.
+
+Aufbau des Haupttexts:
+1. Einstieg: konkrete Motivation für genau diese Stelle und das Kernthema der Ausschreibung.
+2. Matching: 2 bis 3 zentrale Anforderungen der Stelle mit passenden Erfahrungen/Fähigkeiten des Bewerbers verbinden.
+3. Belegabsatz: mindestens ein konkreter beruflicher Schwerpunkt aus Profil/Lebenslauf, z. B. Qualitätsmanagement, Lean, Audit, Prozesse, Führung oder Betriebswirtschaft.
+4. Mehrwert: erklären, wie der Bewerber beim Unternehmen Wirkung erzeugen kann.
+5. Abschluss: Gesprächswunsch, selbstbewusst und freundlich.
 
 Stil: ${voice || 'klar und professionell'}
 
@@ -910,7 +920,7 @@ function normalizeText(text) {
 function summarizeText(text) {
   const normalized = normalizeText(text);
   if (!normalized) return 'Kein Text auslesbar.';
-  return normalized.slice(0, 260);
+  return normalized.slice(0, 900);
 }
 
 function extractKeywords(text) {
