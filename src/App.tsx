@@ -129,6 +129,7 @@ function ApplicationShell() {
   const [apiKeyStatus, setApiKeyStatus] = useState('');
   const [isApiKeyEditing, setIsApiKeyEditing] = useState(false);
   const [googleClientId, setGoogleClientId] = useState('');
+  const [googleClientIdStatus, setGoogleClientIdStatus] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -260,7 +261,16 @@ function ApplicationShell() {
 
   function updateGoogleClientId(value: string) {
     setGoogleClientId(value);
-    void saveSettings({ googleClientId: value });
+    setGoogleClientIdStatus(value.trim().length > 0 ? 'Noch nicht gespeichert.' : '');
+  }
+
+  async function saveGoogleClientId() {
+    try {
+      await saveSettings({ googleClientId });
+      setGoogleClientIdStatus(googleClientId.trim().length > 0 ? 'Google Client-ID gespeichert.' : 'Google Client-ID entfernt.');
+    } catch {
+      setGoogleClientIdStatus('Google Client-ID konnte nicht gespeichert werden.');
+    }
   }
 
   function updateApiKey(value: string) {
@@ -887,7 +897,12 @@ function ApplicationShell() {
             </div>
             <div className="google-client-box">
               <TextField label="Google OAuth Client-ID" value={googleClientId} onChange={updateGoogleClientId} />
-              <p className="field-note">Für direktes Erstellen in Google Docs. Ohne Client-ID öffnet die App docs.new und kopiert den Text.</p>
+              <div className="google-client-actions">
+                <p className="field-note">
+                  {googleClientIdStatus || 'Für direktes Erstellen in Google Docs. Ohne Client-ID öffnet die App docs.new und kopiert den Text.'}
+                </p>
+                <button type="button" className="button primary" onClick={saveGoogleClientId}>Speichern</button>
+              </div>
               <details className="oauth-help">
                 <summary>Google OAuth Client-ID erstellen</summary>
                 <ol>

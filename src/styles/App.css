@@ -706,6 +706,22 @@ textarea:focus {
   margin: 8px 0 0;
 }
 
+.google-client-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.google-client-actions .field-note {
+  margin: 0;
+}
+
+.google-client-actions .button {
+  flex: 0 0 auto;
+}
+
 .oauth-help {
   border: 1px solid rgba(66, 133, 244, 0.16);
   border-radius: 18px;
@@ -1788,6 +1804,11 @@ textarea:focus {
 @media (max-width: 720px) {
   .settings-page {
     max-width: none;
+  }
+
+  .google-client-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .settings-page .master-data-panel .form-grid,
