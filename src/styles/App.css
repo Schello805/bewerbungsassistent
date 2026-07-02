@@ -183,6 +183,10 @@ code {
   grid-column: 2;
 }
 
+.settings-page .integrations-panel {
+  grid-column: 2;
+}
+
 .settings-page .master-data-panel .form-grid {
   grid-template-columns: 1fr;
 }
@@ -692,6 +696,13 @@ textarea:focus {
     rgba(255, 253, 248, 0.9);
 }
 
+.integrations-panel {
+  min-height: 190px;
+  background:
+    linear-gradient(135deg, rgba(66, 133, 244, 0.1), rgba(52, 168, 83, 0.08)),
+    rgba(255, 253, 248, 0.9);
+}
+
 .backup-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1068,6 +1079,10 @@ textarea:focus {
   }
 
   .settings-page .backup-panel {
+    grid-column: auto;
+  }
+
+  .settings-page .integrations-panel {
     grid-column: auto;
   }
 
