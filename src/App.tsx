@@ -552,11 +552,11 @@ function ApplicationShell() {
   async function openGoogleDocs() {
     if (!draft.trim()) return;
     setIsGoogleLoading(true);
+    let documentWindow: Window | null = null;
     try {
       if (!googleClientId.trim()) {
         await navigator.clipboard.writeText(draft);
-        window.open('https://docs.new', '_blank', 'noopener,noreferrer');
-        setLetterStatus('Google Docs geöffnet. Der Text ist in der Zwischenablage.');
+        setLetterStatus('Google OAuth Client-ID fehlt. Text wurde kopiert, aber ein gefülltes Google Doc braucht die gespeicherte Client-ID.');
         return;
       }
 
@@ -564,6 +564,12 @@ function ApplicationShell() {
       if (!isValidGoogleClientId(normalizedClientId)) {
         setLetterStatus('Google Client-ID ist ungültig. Bitte vollständig speichern: ...apps.googleusercontent.com');
         return;
+      }
+
+      documentWindow = window.open('about:blank', '_blank');
+      if (documentWindow) {
+        documentWindow.opener = null;
+        documentWindow.document.write('<!doctype html><title>Google Docs</title><body style="font-family:system-ui;margin:32px">Google Doc wird erstellt ...</body>');
       }
 
       const accessToken = await requestGoogleAccessToken(normalizedClientId);
@@ -575,7 +581,7 @@ function ApplicationShell() {
         },
         body: JSON.stringify({ title: jobDetails.subject || 'Bewerbungsanschreiben' }),
       });
-      if (!createResponse.ok) throw new Error('Google-Dokument konnte nicht erstellt werden.');
+      if (!createResponse.ok) throw new Error(await readGoogleError(createResponse, 'Google-Dokument konnte nicht erstellt werden.'));
       const document = await createResponse.json() as { documentId: string };
       const insertResponse = await fetch(`https://docs.googleapis.com/v1/documents/${document.documentId}:batchUpdate`, {
         method: 'POST',
@@ -592,10 +598,18 @@ function ApplicationShell() {
           }],
         }),
       });
-      if (!insertResponse.ok) throw new Error('Text konnte nicht in Google Docs eingefügt werden.');
-      window.open(`https://docs.google.com/document/d/${document.documentId}/edit`, '_blank', 'noopener,noreferrer');
+      if (!insertResponse.ok) throw new Error(await readGoogleError(insertResponse, 'Text konnte nicht in Google Docs eingefügt werden.'));
+      const documentUrl = `https://docs.google.com/document/d/${document.documentId}/edit`;
+      if (documentWindow) {
+        documentWindow.location.href = documentUrl;
+      } else {
+        window.open(documentUrl, '_blank', 'noopener,noreferrer');
+      }
       setLetterStatus('Google Docs Dokument erstellt.');
     } catch (error) {
+      if (documentWindow && !documentWindow.closed) {
+        documentWindow.close();
+      }
       setLetterStatus(error instanceof Error ? error.message : 'Google Docs konnte nicht geöffnet werden.');
     } finally {
       setIsGoogleLoading(false);
@@ -1253,6 +1267,12 @@ function normalizeGoogleClientId(value: string) {
 
 function isValidGoogleClientId(value: string) {
   return /^[0-9a-zA-Z_-]+\.apps\.googleusercontent\.com$/.test(value);
+}
+
+async function readGoogleError(response: Response, fallback: string) {
+  const data = await response.json().catch(() => null) as { error?: { message?: string; status?: string } } | null;
+  const message = data?.error?.message || data?.error?.status;
+  return message ? `${fallback}: ${message}` : fallback;
 }
 
 async function requestGoogleAccessToken(clientId: string): Promise<string> {
