@@ -1013,7 +1013,7 @@ textarea:focus {
   border-radius: 20px;
   font-family: ui-serif, Georgia, "Times New Roman", serif;
   font-size: 1.02rem;
-  line-height: 1.75;
+  line-height: 1.22;
 }
 
 .letter-preview {
@@ -1037,11 +1037,11 @@ textarea:focus {
   color: #111827;
   font-family: ui-serif, Georgia, "Times New Roman", serif;
   font-size: 0.86rem;
-  line-height: 1.48;
+  line-height: 1.22;
 }
 
 .preview-page p {
-  margin: 0 0 0.62rem;
+  margin: 0;
   color: inherit;
   font-size: inherit;
   white-space: pre-wrap;
@@ -1066,24 +1066,24 @@ textarea:focus {
 .preview-rule {
   width: min(360px, 72%);
   height: 2px;
-  margin: 0.4rem 0 2rem;
+  margin: 0.25rem 0 1.2rem;
   background: linear-gradient(90deg, #1f4e79, rgba(31, 78, 121, 0.2));
 }
 
 .preview-date {
-  margin-top: 1.4rem !important;
+  margin-top: 0.85rem !important;
   text-align: right;
 }
 
 .preview-subject {
-  margin-top: 1.2rem !important;
-  margin-bottom: 1.3rem !important;
+  margin-top: 0.85rem !important;
+  margin-bottom: 0.85rem !important;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-weight: 900;
 }
 
 .preview-blank {
-  height: 0.86rem;
+  height: 0.72rem;
 }
 
 .preview-empty {
@@ -1733,6 +1733,19 @@ textarea:focus {
 
 .draft-editor {
   min-height: 520px;
+}
+
+.draft-editor,
+.preview-page {
+  line-height: 1.22;
+}
+
+.preview-page p {
+  margin-bottom: 0;
+}
+
+.preview-blank {
+  height: 0.72rem;
 }
 
 @media (max-width: 1180px) {
