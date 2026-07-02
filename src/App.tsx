@@ -1,5 +1,5 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, ExternalLink, FileUp, KeyRound, Link2, RefreshCw, Save, Scissors, Trash2, WandSparkles } from 'lucide-react';
+import { CheckCircle2, Download, ExternalLink, FileUp, KeyRound, Link2, RefreshCw, Save, Scissors, Trash2, WandSparkles, XCircle } from 'lucide-react';
 import { Footer } from './components/Footer';
 import { LegalPage } from './components/LegalPage';
 import { providerOptions, voiceOptions } from './data/workflow';
@@ -143,6 +143,10 @@ function ApplicationShell() {
   const currentProviderHasStoredKey = apiKeyProviders.includes(provider);
   const apiKeyDisplayValue = apiKey || (!isApiKeyEditing && currentProviderHasStoredKey ? '••••••••••••' : '');
   const activeCandidate = candidates[Math.min(activeCandidateIndex, Math.max(candidates.length - 1, 0))];
+  const profileEvidence = getProfileEvidence(profile);
+  const matchItems = useMemo(() => createMatchItems(jobInput, profileEvidence), [jobInput, profileEvidence]);
+  const qualityChecks = useMemo(() => createQualityChecks(draft, jobDetails, profileEvidence), [draft, jobDetails, profileEvidence]);
+  const passedQualityChecks = qualityChecks.filter((check) => check.ok).length;
 
   const loadProfile = useCallback(async () => {
     try {
@@ -594,14 +598,7 @@ function ApplicationShell() {
           authorization: `Bearer ${accessToken}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({
-          requests: [{
-            insertText: {
-              location: { index: 1 },
-              text: draft,
-            },
-          }],
-        }),
+        body: JSON.stringify({ requests: buildGoogleDocsRequests(draft) }),
       });
       if (!insertResponse.ok) throw new Error(await readGoogleError(insertResponse, 'Text konnte nicht in Google Docs eingefügt werden.'));
       const documentUrl = `https://docs.google.com/document/d/${document.documentId}/edit`;
@@ -771,6 +768,27 @@ function ApplicationShell() {
               <span>{voice}</span>
               {profile.insights?.skills?.[0] && <span>{profile.insights.skills.slice(0, 3).join(' · ')}</span>}
             </div>
+            <div className="analysis-block">
+              <h3>Erkannte Qualifikationen</h3>
+              {profileEvidence.length > 0 ? (
+                <div className="evidence-tags">
+                  {profileEvidence.slice(0, 10).map((item) => <span key={item}>{item}</span>)}
+                </div>
+              ) : (
+                <p>Noch keine verwertbaren Qualifikationen erkannt. Bitte Unterlagen hochladen oder prüfen.</p>
+              )}
+            </div>
+            <div className="analysis-block">
+              <h3>Stellen-Matching</h3>
+              <ul className="match-list">
+                {matchItems.map((item) => (
+                  <li key={item.requirement} className={item.matches.length > 0 ? 'match-ok' : 'match-missing'}>
+                    <strong>{item.requirement}</strong>
+                    <span>{item.matches.length > 0 ? item.matches.join(' · ') : 'Noch kein passender Profilbeleg erkannt'}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </aside>
         </section>
 
@@ -802,6 +820,20 @@ function ApplicationShell() {
               <button type="button" className="button google" onClick={openGoogleDocs} disabled={!draft || isGoogleLoading}><Link2 size={18} /> {isGoogleLoading ? 'Google Docs öffnet ...' : 'Google Docs öffnen'}</button>
               <button type="button" className="button secondary" onClick={copyForGoogleDocs} disabled={!draft}><Link2 size={18} /> Text kopieren</button>
             </div>
+            <section className="quality-panel" aria-label="Anschreiben Qualitätscheck">
+              <div>
+                <h3>Qualitätscheck</h3>
+                <p>{draft ? `${passedQualityChecks} von ${qualityChecks.length} Punkten erfüllt` : 'Sobald ein Anschreiben erstellt ist, wird es hier geprüft.'}</p>
+              </div>
+              <ul>
+                {qualityChecks.map((check) => (
+                  <li key={check.label} className={check.ok ? 'check-ok' : 'check-missing'}>
+                    {check.ok ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                    <span>{check.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
             <section className="saved-letters" aria-label="Gespeicherte Anschreiben">
               {candidates.length > 0 && (
                 <div className="candidate-list">
@@ -1131,13 +1163,7 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
 }
 
 function formatProfileStrengths(profile: ProfileData) {
-  const rawValues = [
-    ...(profile.evidence ?? []),
-    ...(profile.insights?.skills ?? []),
-    ...(profile.insights?.roles ?? []),
-    ...(profile.insights?.education ?? []),
-    ...(profile.insights?.strengths ?? []),
-  ];
+  const rawValues = getProfileEvidence(profile);
   const blocked = new Set(['michael', 'schellenberger', 'herr', 'frau', 'köln', 'bechhofen', 'befriedigend', 'fachschule', 'dokument', 'pdf']);
   const values = rawValues
     .map((value) => value.trim())
@@ -1145,6 +1171,58 @@ function formatProfileStrengths(profile: ProfileData) {
     .slice(0, 5);
 
   return values.join(', ');
+}
+
+function getProfileEvidence(profile: ProfileData) {
+  return uniqueValues([
+    ...(profile.evidence ?? []),
+    ...(profile.insights?.skills ?? []),
+    ...(profile.insights?.roles ?? []),
+    ...(profile.insights?.education ?? []),
+    ...(profile.insights?.strengths ?? []),
+  ]).filter((value) => value.length >= 3).slice(0, 18);
+}
+
+function createMatchItems(jobInput: string, profileEvidence: string[]) {
+  const normalizedJob = jobInput.toLowerCase();
+  const requirementGroups = [
+    { label: 'Qualität / QS', terms: ['qualität', 'quality', 'qs', 'qmb', 'audit', 'iso', 'vda'] },
+    { label: 'Führung / Verantwortung', terms: ['leitung', 'führung', 'team', 'verantwortung', 'lead', 'head'] },
+    { label: 'Prozesse / Verbesserung', terms: ['prozess', 'lean', 'kaizen', 'kvp', 'optimierung', 'continuous improvement'] },
+    { label: 'Zahlen / Steuerung', terms: ['controlling', 'kennzahlen', 'kpi', 'reporting', 'analyse'] },
+    { label: 'IT / Tools', terms: ['sap', 'excel', 'power bi', 'digital', 'system'] },
+  ];
+
+  return requirementGroups
+    .filter((group) => group.terms.some((term) => normalizedJob.includes(term)))
+    .slice(0, 5)
+    .map((group) => ({
+      requirement: group.label,
+      matches: profileEvidence.filter((item) => group.terms.some((term) => item.toLowerCase().includes(term))).slice(0, 3),
+    }))
+    .concat(jobInput.trim() ? [] : [{ requirement: 'Stellenanzeige', matches: [] }]);
+}
+
+function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvidence: string[]) {
+  const normalizedDraft = draft.toLowerCase();
+  const words = draft.trim().split(/\s+/).filter(Boolean);
+  const evidenceHits = profileEvidence.filter((item) => normalizedDraft.includes(item.toLowerCase())).length;
+  const hasPlaceholders = /\bXXX\b|\[[^\]]+\]/.test(draft);
+  const hasSubject = jobDetails.subject && normalizedDraft.includes(jobDetails.subject.toLowerCase().replace(/^bewerbung\s+als\s+/, '').slice(0, 18));
+
+  return [
+    { label: 'Länge ausreichend', ok: words.length >= 220 },
+    { label: 'Betreff vorhanden', ok: normalizedDraft.includes('bewerbung') && Boolean(hasSubject || jobDetails.subject === 'Bewerbung') },
+    { label: 'Anrede vorhanden', ok: /sehr geehrte|guten tag/i.test(draft) },
+    { label: 'Mindestens 3 Profilbelege', ok: evidenceHits >= 3 },
+    { label: 'Stellenbezug vorhanden', ok: Boolean(jobDetails.title && normalizedDraft.includes(jobDetails.title.toLowerCase().slice(0, 12))) },
+    { label: 'Keine offenen Platzhalter', ok: !hasPlaceholders },
+    { label: 'Schlussformel vorhanden', ok: normalizedDraft.includes('mit freundlichen grüßen') },
+  ];
+}
+
+function uniqueValues(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function cleanGeneratedLetter(text: string) {
@@ -1308,6 +1386,63 @@ async function readGoogleError(response: Response, fallback: string) {
   const data = await response.json().catch(() => null) as { error?: { message?: string; status?: string } } | null;
   const message = data?.error?.message || data?.error?.status;
   return message ? `${fallback}: ${message}` : fallback;
+}
+
+function buildGoogleDocsRequests(text: string) {
+  const lines = text.split('\n');
+  const subjectLineIndex = lines.findIndex((line) => line.trim().toLowerCase().startsWith('bewerbung'));
+  const dateLineIndex = lines.findIndex((line) => /\b\d{1,2}\.\d{1,2}\.\d{4}\b/.test(line));
+  const lineStartIndexes = lines.reduce<number[]>((indexes, line, index) => {
+    const previousStart = indexes[index - 1] ?? 1;
+    indexes.push(index === 0 ? 1 : previousStart + lines[index - 1].length + 1);
+    return indexes;
+  }, []);
+  const requests: Array<Record<string, unknown>> = [{
+    insertText: {
+      location: { index: 1 },
+      text,
+    },
+  }, {
+    updateTextStyle: {
+      range: { startIndex: 1, endIndex: Math.max(2, text.length + 1) },
+      textStyle: {
+        weightedFontFamily: { fontFamily: 'Arial' },
+        fontSize: { magnitude: 11, unit: 'PT' },
+      },
+      fields: 'weightedFontFamily,fontSize',
+    },
+  }];
+
+  const styleRange = (lineIndex: number, fields: string, textStyle: Record<string, unknown>) => {
+    const line = lines[lineIndex] ?? '';
+    if (!line.trim()) return;
+    requests.push({
+      updateTextStyle: {
+        range: { startIndex: lineStartIndexes[lineIndex], endIndex: lineStartIndexes[lineIndex] + line.length },
+        textStyle,
+        fields,
+      },
+    });
+  };
+
+  styleRange(0, 'bold,fontSize', { bold: true, fontSize: { magnitude: 12, unit: 'PT' } });
+  styleRange(1, 'italic', { italic: true });
+  if (subjectLineIndex >= 0) {
+    styleRange(subjectLineIndex, 'bold', { bold: true });
+  }
+  if (dateLineIndex >= 0) {
+    requests.push({
+      updateParagraphStyle: {
+        range: {
+          startIndex: lineStartIndexes[dateLineIndex],
+          endIndex: lineStartIndexes[dateLineIndex] + (lines[dateLineIndex]?.length ?? 0),
+        },
+        paragraphStyle: { alignment: 'END' },
+        fields: 'alignment',
+      },
+    });
+  }
+  return requests;
 }
 
 async function requestGoogleAccessToken(clientId: string): Promise<string> {

@@ -8,6 +8,8 @@ import { createServer as createViteServer } from 'vite';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -18,6 +20,8 @@ const databasePath = path.join(storageDir, 'app.db');
 const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || '0.0.0.0';
 const isProduction = process.env.NODE_ENV === 'production';
+const execFileAsync = promisify(execFile);
+let updateInProgress = false;
 
 await fs.mkdir(dataDir, { recursive: true });
 await fs.mkdir(lettersDir, { recursive: true });
@@ -118,6 +122,28 @@ app.get('/api/settings', (_request, response, next) => {
     });
   } catch (error) {
     next(error);
+  }
+});
+
+app.get('/api/update-status', async (_request, response) => {
+  const status = await getUpdateStatus();
+  response.json(status);
+});
+
+app.post('/api/update', async (_request, response) => {
+  if (updateInProgress) {
+    response.status(409).json({ error: 'Update läuft bereits.' });
+    return;
+  }
+
+  updateInProgress = true;
+  try {
+    const result = await runSelfUpdate();
+    response.json(result);
+    setTimeout(() => process.exit(0), 1200);
+  } catch (error) {
+    updateInProgress = false;
+    response.status(400).json({ error: error instanceof Error ? error.message : 'Update fehlgeschlagen.' });
   }
 });
 
@@ -585,6 +611,63 @@ async function restoreBackup(backup) {
     }
   });
   restoreLetters(backup.letters);
+}
+
+async function getUpdateStatus() {
+  try {
+    const current = await gitOutput(['rev-parse', '--short', 'HEAD']);
+    await gitOutput(['fetch', 'origin', 'main']);
+    const remote = await gitOutput(['rev-parse', '--short', 'origin/main']);
+    const behindText = await gitOutput(['rev-list', '--count', 'HEAD..origin/main']);
+    const behind = Number(behindText || 0);
+    return {
+      ok: true,
+      current,
+      remote,
+      updateAvailable: behind > 0,
+      behind,
+      updating: updateInProgress,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      updateAvailable: false,
+      updating: updateInProgress,
+      error: error instanceof Error ? error.message : 'Update-Status konnte nicht geprüft werden.',
+    };
+  }
+}
+
+async function runSelfUpdate() {
+  await gitOutput(['fetch', 'origin', 'main']);
+  const before = await gitOutput(['rev-parse', '--short', 'HEAD']);
+  const behind = Number(await gitOutput(['rev-list', '--count', 'HEAD..origin/main']) || 0);
+
+  if (behind === 0) {
+    updateInProgress = false;
+    return { ok: true, updated: false, message: 'Keine neue Version verfügbar.', current: before };
+  }
+
+  await gitOutput(['pull', '--ff-only', 'origin', 'main']);
+  await execInRoot('npm', ['ci'], 180000);
+  await execInRoot('npm', ['run', 'build'], 180000);
+  const current = await gitOutput(['rev-parse', '--short', 'HEAD']);
+  return { ok: true, updated: true, message: 'Update installiert. Server startet neu.', before, current };
+}
+
+async function gitOutput(args) {
+  const { stdout } = await execInRoot('git', args, 60000);
+  return stdout.trim();
+}
+
+async function execInRoot(command, args, timeout) {
+  try {
+    return await execFileAsync(command, args, { cwd: rootDir, timeout, maxBuffer: 1024 * 1024 * 8 });
+  } catch (error) {
+    const stderr = error?.stderr ? String(error.stderr).trim() : '';
+    const stdout = error?.stdout ? String(error.stdout).trim() : '';
+    throw new Error([stderr, stdout, error instanceof Error ? error.message : 'Befehl fehlgeschlagen.'].filter(Boolean).join('\n').slice(0, 1200));
+  }
 }
 
 async function fetchJobPosting(url) {

@@ -1,15 +1,59 @@
+import { useEffect, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
+
 const githubUrl = 'https://github.com/Schello805/bewerbungsassistent';
 
 export function Footer() {
+  const [status, setStatus] = useState('Update prüfen');
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  useEffect(() => {
+    checkUpdate(false);
+  }, []);
+
+  async function checkUpdate(showStatus = true) {
+    if (showStatus) setStatus('Prüfe Update ...');
+    try {
+      const response = await fetch('/api/update-status');
+      const data = await response.json() as { updateAvailable?: boolean; behind?: number; error?: string };
+      setUpdateAvailable(Boolean(data.updateAvailable));
+      setStatus(data.updateAvailable ? `Update verfügbar (${data.behind})` : 'Aktuell');
+    } catch {
+      if (showStatus) setStatus('Updateprüfung nicht möglich');
+    }
+  }
+
+  async function runUpdate() {
+    setIsUpdating(true);
+    setStatus('Update läuft ...');
+    try {
+      const response = await fetch('/api/update', { method: 'POST' });
+      const data = await response.json() as { message?: string; error?: string; updated?: boolean };
+      if (!response.ok) throw new Error(data.error || 'Update fehlgeschlagen.');
+      setStatus(data.message || 'Update abgeschlossen.');
+      if (data.updated) {
+        window.setTimeout(() => window.location.reload(), 4000);
+      }
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Update fehlgeschlagen.');
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
   return (
     <footer className="app-footer">
       <div>
         <strong>Bewerbungsassistent</strong>
         <p>
-          Open Source von Michael Schellenberger · Rev. {__APP_VERSION__}
+          Open Source von Michael Schellenberger · Rev. {__APP_REVISION__} · v{__APP_VERSION__}
         </p>
       </div>
       <nav aria-label="Rechtliche Links">
+        <button type="button" className={updateAvailable ? 'footer-update has-update' : 'footer-update'} onClick={updateAvailable ? runUpdate : () => checkUpdate(true)} disabled={isUpdating}>
+          <RefreshCw size={15} /> {isUpdating ? 'Update läuft ...' : status}
+        </button>
         <a href="/datenschutz">Datenschutz</a>
         <a href={githubUrl} target="_blank" rel="noreferrer" className="github-link">
           <GithubIcon /> GitHub
