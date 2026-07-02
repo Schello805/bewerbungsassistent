@@ -1,5 +1,5 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FileUp, KeyRound, Link2, RefreshCw, Save, Scissors, Trash2, WandSparkles } from 'lucide-react';
+import { Download, ExternalLink, FileUp, KeyRound, Link2, RefreshCw, Save, Scissors, Trash2, WandSparkles } from 'lucide-react';
 import { Footer } from './components/Footer';
 import { LegalPage } from './components/LegalPage';
 import { providerOptions, voiceOptions } from './data/workflow';
@@ -884,6 +884,20 @@ function ApplicationShell() {
             <div className="google-client-box">
               <TextField label="Google OAuth Client-ID" value={googleClientId} onChange={updateGoogleClientId} />
               <p className="field-note">Für direktes Erstellen in Google Docs. Ohne Client-ID öffnet die App docs.new und kopiert den Text.</p>
+              <details className="oauth-help">
+                <summary>Google OAuth Client-ID erstellen</summary>
+                <ol>
+                  <li>Öffne die Google Cloud Console und erstelle oder wähle ein Projekt.</li>
+                  <li>Öffne <strong>APIs & Dienste → OAuth-Zustimmungsbildschirm</strong> und trage App-Name sowie Support-E-Mail ein.</li>
+                  <li>Öffne <strong>APIs & Dienste → Anmeldedaten</strong> und wähle <strong>Client-ID erstellen</strong>.</li>
+                  <li>Als Anwendungstyp <strong>Webanwendung</strong> auswählen.</li>
+                  <li>Bei <strong>Autorisierte JavaScript-Quellen</strong> diese Adresse eintragen: <code>{window.location.origin}</code></li>
+                  <li>Client-ID kopieren und oben in das Feld einfügen.</li>
+                </ol>
+                <a href="https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid" target="_blank" rel="noreferrer">
+                  Offizielle Google-Anleitung öffnen <ExternalLink size={14} />
+                </a>
+              </details>
             </div>
           </article>
 
