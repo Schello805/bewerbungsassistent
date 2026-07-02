@@ -870,6 +870,15 @@ function ApplicationShell() {
             ) : (
               <p className="field-note local-ai-note">Llama lokal nutzt Ollama auf dem Server unter <code>http://localhost:11434</code>. Kein API-Key nötig.</p>
             )}
+          </article>
+
+          <article className="panel integrations-panel">
+            <div className="panel-header">
+              <div>
+                <h2>Google Docs</h2>
+                <p className="document-status">Optionaler Export direkt in Google Docs.</p>
+              </div>
+            </div>
             <div className="google-client-box">
               <TextField label="Google OAuth Client-ID" value={googleClientId} onChange={updateGoogleClientId} />
               <p className="field-note">Für direktes Erstellen in Google Docs. Ohne Client-ID öffnet die App docs.new und kopiert den Text.</p>
