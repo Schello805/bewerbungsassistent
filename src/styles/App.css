@@ -515,6 +515,19 @@ textarea:focus {
   box-shadow: 0 10px 24px rgba(103, 80, 245, 0.13);
 }
 
+.provider-button.stored {
+  border-color: rgba(22, 163, 74, 0.3);
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.16), rgba(34, 197, 94, 0.1));
+  color: var(--success-dark);
+}
+
+.provider-button.stored.active {
+  border-color: rgba(22, 163, 74, 0.42);
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.24), rgba(47, 183, 232, 0.12));
+  color: var(--ink);
+  box-shadow: 0 10px 24px rgba(22, 163, 74, 0.16);
+}
+
 .provider-button span {
   display: inline-flex;
   align-items: center;

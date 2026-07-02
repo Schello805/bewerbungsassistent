@@ -826,7 +826,11 @@ function ApplicationShell() {
                 <button
                   key={option}
                   type="button"
-                  className={provider === option ? 'provider-button active' : 'provider-button'}
+                  className={[
+                    'provider-button',
+                    providerHasUsableKey(option, apiKeyProviders) ? 'stored' : '',
+                    provider === option ? 'active' : '',
+                  ].filter(Boolean).join(' ')}
                   onClick={() => updateProvider(option)}
                 >
                   <span>{providerHasUsableKey(option, apiKeyProviders) ? '●' : '○'} {option}</span>
