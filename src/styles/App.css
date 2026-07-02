@@ -427,15 +427,25 @@ textarea:focus {
   color: var(--ink);
 }
 
-.big-action {
-  width: 100%;
+.create-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(180px, 0.65fr);
+  gap: 10px;
   margin-top: 10px;
+}
+
+.create-actions .button {
+  width: 100%;
+}
+
+.big-action {
   min-height: 52px;
   font-size: 1.04rem;
 }
 
 .compare-action {
-  margin-top: 8px;
+  min-height: 52px;
+  color: var(--muted);
 }
 
 .compare-cost-note {
@@ -1087,6 +1097,10 @@ textarea:focus {
   }
 
   .api-field {
+    grid-template-columns: 1fr;
+  }
+
+  .create-actions {
     grid-template-columns: 1fr;
   }
 

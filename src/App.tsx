@@ -699,14 +699,16 @@ function ApplicationShell() {
                 placeholder="Link oder Text der Stellenanzeige hier einfügen ..."
               />
             </label>
-            <button type="button" className="button primary big-action" onClick={createLetter} disabled={!canCreateLetter || isGenerating}>
-              <WandSparkles size={18} />
-              {isGenerating ? 'Anschreiben wird erstellt ...' : 'Anschreiben erstellen'}
-            </button>
-            <button type="button" className="button secondary compare-action" onClick={compareProviders} disabled={!canCreateLetter || isComparing}>
-              <RefreshCw size={18} />
-              {isComparing ? 'KI-Vergleich läuft ...' : 'KIs vergleichen'}
-            </button>
+            <div className="create-actions">
+              <button type="button" className="button primary big-action" onClick={createLetter} disabled={!canCreateLetter || isGenerating}>
+                <WandSparkles size={18} />
+                {isGenerating ? 'Anschreiben wird erstellt ...' : 'Anschreiben erstellen'}
+              </button>
+              <button type="button" className="button secondary compare-action" onClick={compareProviders} disabled={!canCreateLetter || isComparing}>
+                <RefreshCw size={18} />
+                {isComparing ? 'KI-Vergleich läuft ...' : 'KIs vergleichen'}
+              </button>
+            </div>
             <p className="compare-cost-note">Hinweis: Beim Vergleich wird jede verfügbare KI separat abgefragt. Dadurch können je Anbieter zusätzliche Kosten entstehen.</p>
           </article>
 
