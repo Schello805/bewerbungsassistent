@@ -32,6 +32,7 @@ type ProfileData = {
   documents: ProfileDocument[];
   text: string;
   keywords: string[];
+  evidence?: string[];
   insights?: {
     skills: string[];
     roles: string[];
@@ -1113,15 +1114,17 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
 
 function formatProfileStrengths(profile: ProfileData) {
   const rawValues = [
+    ...(profile.evidence ?? []),
     ...(profile.insights?.skills ?? []),
     ...(profile.insights?.roles ?? []),
+    ...(profile.insights?.education ?? []),
     ...(profile.insights?.strengths ?? []),
   ];
-  const blocked = new Set(['michael', 'schellenberger', 'herr', 'frau', 'köln', 'bechhofen', 'befriedigend', 'fachschule']);
+  const blocked = new Set(['michael', 'schellenberger', 'herr', 'frau', 'köln', 'bechhofen', 'befriedigend', 'fachschule', 'dokument', 'pdf']);
   const values = rawValues
     .map((value) => value.trim())
     .filter((value) => value.length >= 3 && !blocked.has(value.toLowerCase()))
-    .slice(0, 3);
+    .slice(0, 5);
 
   return values.join(', ');
 }

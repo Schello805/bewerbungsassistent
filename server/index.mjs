@@ -632,6 +632,8 @@ Regeln:
 - Das Anschreiben soll substanziell sein: etwa 230 bis 360 Wörter im Haupttext, nicht nur drei generische Sätze.
 - Schreibe keine Floskelliste. Jeder Absatz muss einen Zweck haben und zur Stelle passen.
 - Nutze "ich" natürlich, aber nicht in jedem Satz am Anfang.
+- Wenn Profilbelege vorhanden sind, müssen mindestens 3 konkrete Qualifikationen, Zertifikate, Rollen oder Methoden aus dem Profil sinnvoll im Text vorkommen.
+- Nenne diese Belege natürlich im Fließtext, nicht als Aufzählung.
 - Schlussformel exakt:
 Mit freundlichen Grüßen
 
@@ -702,17 +704,24 @@ ${text}
 function buildProfileContext(profile) {
   const insights = profile?.insights ?? {};
   const documents = Array.isArray(profile?.documents) ? profile.documents : [];
+  const evidence = Array.isArray(profile?.evidence) ? profile.evidence : [];
+  const documentNames = documents
+    .slice(0, 12)
+    .map((document) => `- ${document.type}: ${document.fileName}`)
+    .join('\n');
   const documentSummaries = documents
     .filter((document) => document.summary && document.summary !== 'Kein Text auslesbar.')
-    .slice(0, 5)
-    .map((document) => `- ${document.type}: ${document.summary}`)
+    .slice(0, 8)
+    .map((document) => `- ${document.fileName}: ${document.summary}`)
     .join('\n');
 
   return [
+    `Verbindliche Profilbelege für das Anschreiben: ${evidence.slice(0, 18).join(', ') || 'keine eindeutig erkannt'}`,
     `Kompetenzen: ${(insights.skills ?? []).slice(0, 10).join(', ') || 'keine eindeutig erkannt'}`,
     `Rollen/Erfahrung: ${(insights.roles ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
     `Ausbildung/Zertifikate: ${(insights.education ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
     `Arbeitsweise: ${(insights.strengths ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
+    documentNames ? `Hochgeladene Dokumente:\n${documentNames}` : '',
     documentSummaries ? `Dokumentauszüge:\n${documentSummaries}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -886,6 +895,7 @@ async function readProfileFromDataDir() {
     })),
     text: combinedText.slice(0, 18000),
     keywords: extractKeywords(combinedText),
+    evidence: extractProfileEvidence(combinedText, documents),
     insights: extractProfileInsights(combinedText),
   };
 }
@@ -948,12 +958,15 @@ function extractKeywords(text) {
 function extractProfileInsights(text) {
   const normalized = normalizeText(text);
   const skillPatterns = [
-    'Qualitätsmanagement', 'Projektmanagement', 'Prozessmanagement', 'Audit', 'VDA', 'ISO',
-    'KAIZEN', 'Lean', 'Six Sigma', 'SAP', 'Excel', 'Power BI', 'Führung', 'Controlling',
-    'Vertrieb', 'Einkauf', 'Produktion', 'Logistik', 'IT', 'Digitalisierung',
+    'Qualitätsmanagement', 'Qualitätssicherung', 'Qualitätsplanung', 'Reklamationsmanagement',
+    'Lieferantenqualität', 'Projektmanagement', 'Prozessmanagement', 'Audit', 'VDA 6.3', 'VDA',
+    'ISO 9001', 'ISO 14001', 'IATF 16949', 'ISO', 'KAIZEN', 'KVP', 'Lean', 'Lean Management',
+    'Six Sigma', '5S', '8D', 'FMEA', 'APQP', 'PPAP', 'CAPA', 'Root Cause', 'Prüfplanung',
+    'Messtechnik', 'SAP', 'Excel', 'Power BI', 'Führung', 'Teamführung', 'Controlling',
+    'Vertrieb', 'Einkauf', 'Produktion', 'Logistik', 'IT', 'Digitalisierung', 'Betriebswirtschaft',
   ];
-  const rolePattern = /\b(?:Qualitätsmanager|Qualitätsmanagementbeauftragter|Betriebswirt|Projektleiter|Teamleiter|Auditor|Controller|Manager|Sachbearbeiter|Leiter|Koordinator)[\wäöüß -]*/gi;
-  const educationPattern = /\b(?:staatl\.?\s*gepr\.?\s*Betriebswirt|Bachelor|Master|Ausbildung|Studium|Zertifikat|Certificate|IHK|Techniker|Auditor)[\wäöüß .-]*/gi;
+  const rolePattern = /\b(?:Qualitätsmanager|Qualitätsmanagementbeauftragter|QMB|Qualitätsmanagement-Beauftragter|Qualitätsmanagementbeauftragter|Qualitätsmanagementbeauftragte|Betriebswirt|Projektleiter|Teamleiter|Auditor|Controller|Manager|Sachbearbeiter|Leiter|Koordinator|Beauftragter)[\wäöüß /.-]*/gi;
+  const educationPattern = /\b(?:staatl\.?\s*gepr\.?\s*Betriebswirt|staatlich geprüfter Betriebswirt|Bachelor|Master|Ausbildung|Studium|Zertifikat|Certificate|IHK|Techniker|Auditor|Coursera|Abschluss)[\wäöüß /.-]*/gi;
   const strengthPatterns = [
     'strukturiert', 'zuverlässig', 'analytisch', 'kommunikationsstark', 'eigenverantwortlich',
     'lösungsorientiert', 'teamfähig', 'kundenorientiert', 'praxisnah', 'verantwortungsvoll',
@@ -965,6 +978,46 @@ function extractProfileInsights(text) {
     education: uniqueMatches(normalized.match(educationPattern) ?? []).slice(0, 8),
     strengths: uniqueMatches(strengthPatterns.filter((strength) => new RegExp(`\\b${escapeRegExp(strength)}\\b`, 'i').test(normalized))).slice(0, 10),
   };
+}
+
+function extractProfileEvidence(text, documents = []) {
+  const normalized = normalizeText(text);
+  const documentEvidence = documents
+    .map((document) => [document.fileName, document.type].filter(Boolean).join(' '))
+    .flatMap((value) => value.split(/[_-]/))
+    .map((value) => value.replace(/\.[a-z0-9]+$/i, '').trim());
+  const phrasePatterns = [
+    /\bstaatl\.?\s*gepr\.?\s*Betriebswirt\b/gi,
+    /\bstaatlich geprüfter Betriebswirt\b/gi,
+    /\bQualitätsmanagement(?:beauftragter|beauftragte)?\b/gi,
+    /\bQualitätssicherung\b/gi,
+    /\bQMB\b/gi,
+    /\bVDA\s*6\.3\b/gi,
+    /\bISO\s*9001\b/gi,
+    /\bISO\s*14001\b/gi,
+    /\bIATF\s*16949\b/gi,
+    /\bAudit(?:or|s)?\b/gi,
+    /\bLean(?: Management)?\b/gi,
+    /\bKAIZEN\b/gi,
+    /\bKVP\b/gi,
+    /\b8D\b/gi,
+    /\bFMEA\b/gi,
+    /\bAPQP\b/gi,
+    /\bPPAP\b/gi,
+    /\bSAP\b/gi,
+    /\bPower BI\b/gi,
+    /\bExcel\b/gi,
+    /\bProjektmanagement\b/gi,
+    /\bProzessmanagement\b/gi,
+    /\bControlling\b/gi,
+    /\bFührung\b/gi,
+  ];
+  const textEvidence = phrasePatterns.flatMap((pattern) => normalized.match(pattern) ?? []);
+  const blocked = new Set(['dokument', 'lebenslauf', 'zeugnisse', 'zertifikate', 'pdf', 'anlage']);
+
+  return uniqueMatches([...textEvidence, ...documentEvidence])
+    .filter((value) => value.length > 2 && !blocked.has(value.toLowerCase()))
+    .slice(0, 24);
 }
 
 function uniqueMatches(values) {
