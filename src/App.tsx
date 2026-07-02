@@ -1075,6 +1075,7 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
   const requestedParagraphs = createRequestedInfoParagraphs(jobDetails.requestedInfo);
   const profileStrengths = formatProfileStrengths(profile);
+  const roleFocus = profileStrengths || 'Qualitätsmanagement, Prozessverbesserung und strukturierter Zusammenarbeit';
   const contactLine = [
     personalData.email,
     personalData.phone,
@@ -1097,12 +1098,12 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
     '',
     jobDetails.salutation,
     '',
-    `mit großem Interesse habe ich Ihre Ausschreibung${titleReference}${companyReference} gelesen. Die Verbindung aus Verantwortung, Qualität und praxisnaher Verbesserung spricht mich sehr an.`,
-    profileStrengths
-      ? `Besonders einbringen kann ich meine Erfahrung in ${profileStrengths}. Dabei arbeite ich strukturiert, zuverlässig und mit einem klaren Blick für umsetzbare Ergebnisse.`
-      : 'Meine bisherigen Unterlagen zeigen eine strukturierte, zuverlässige Arbeitsweise und die Fähigkeit, mich schnell in neue Aufgaben einzuarbeiten.',
-    'Gerne erläutere ich Ihnen in einem persönlichen Gespräch, wie ich Ihr Team konkret unterstützen kann.',
+    `Ihre Ausschreibung${titleReference}${companyReference} spricht mich an, weil sie fachliche Verantwortung mit klarer Umsetzungsstärke verbindet. Genau diese Kombination aus Qualität, Struktur und pragmatischer Verbesserung prägt auch meinen beruflichen Ansatz.`,
+    `Als ${personalData.qualification || 'erfahrener Bewerber'} bringe ich eine analytische und zugleich praxisnahe Arbeitsweise mit. Besonders relevant sind für mich ${roleFocus}. Ich arbeite mich schnell in neue Anforderungen ein, erkenne Zusammenhänge und übersetze diese in nachvollziehbare, umsetzbare Schritte.`,
+    'In meinen bisherigen Stationen war es mir wichtig, Prozesse nicht nur zu verwalten, sondern messbar besser zu machen: klare Standards, verlässliche Kommunikation, saubere Dokumentation und ein Blick für die Schnittstellen zwischen Fachbereichen. Dadurch kann ich Teams entlasten, Entscheidungen vorbereiten und Qualität im Tagesgeschäft stabil verankern.',
+    `Für Ihr Unternehmen sehe ich meinen Mehrwert vor allem darin, Verantwortung zu übernehmen, Themen konsequent nachzuhalten und Verbesserungen so umzusetzen, dass sie im Alltag funktionieren. Gerne bringe ich meine Erfahrung ein, um bestehende Abläufe zu stärken und neue Anforderungen strukturiert voranzubringen.`,
     ...requestedParagraphs,
+    'Ich freue mich darauf, Ihnen in einem persönlichen Gespräch zu zeigen, wie ich Ihr Team konkret unterstützen kann.',
     '',
     'Mit freundlichen Grüßen',
     '',
