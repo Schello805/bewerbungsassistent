@@ -356,7 +356,7 @@ app.post('/api/generate-letter', async (request, response, next) => {
       return;
     }
 
-    const text = await generateWithProvider({ provider, apiKey, prompt });
+    const text = cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt }));
     response.json({ text });
   } catch (error) {
     next(error);
@@ -387,7 +387,7 @@ app.post('/api/rewrite-letter', async (request, response, next) => {
       personalData: request.body.personalData,
       jobDetails: request.body.jobDetails,
     });
-    const rewrittenText = await generateWithProvider({ provider, apiKey, prompt });
+    const rewrittenText = cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt }));
     response.json({ text: rewrittenText || text });
   } catch (error) {
     next(error);
@@ -419,7 +419,7 @@ app.post('/api/compare-letter', async (request, response, next) => {
         const apiKey = candidateProvider === request.body.provider && requestApiKey
           ? requestApiKey
           : getProviderApiKey(candidateProvider);
-        const text = await generateWithProvider({ provider: candidateProvider, apiKey, prompt });
+        const text = cleanGeneratedLetter(await generateWithProvider({ provider: candidateProvider, apiKey, prompt }));
         candidates.push({ provider: candidateProvider, text, ok: true });
       } catch (error) {
         candidates.push({ provider: candidateProvider, text: '', ok: false, error: error instanceof Error ? error.message : 'Fehler' });
@@ -616,6 +616,7 @@ async function fetchJobPosting(url) {
 }
 
 function buildAiPrompt({ personalData, jobInput, jobDetails, voice, profile }) {
+  const profileContext = buildProfileContext(profile);
   return `
 Du bist ein deutscher Bewerbungsassistent. Erstelle ein Anschreiben als editierbaren Entwurf.
 
@@ -623,12 +624,17 @@ Regeln:
 - Schreibe auf Deutsch.
 - Verwende die Absenderdaten, Empfängerblock, Datum, Betreff, Anrede und Schlussformel.
 - Nutze konkrete Informationen aus Lebenslauf/Unterlagen, aber erfinde keine Arbeitgeber oder Zahlen.
+- Verwende Profilinformationen niemals als rohe Keyword-Liste.
+- Kopiere keine langen Rohtext-Passagen aus Lebenslauf, Zeugnissen oder Profil.
 - Wenn Angaben aus der Stellenanzeige verlangt werden (z. B. Wunschgehalt, Eintrittstermin, Referenznummer), füge sie als Platzhalter mit XXX ein.
+- Wenn Firma, Ansprechpartner oder Adresse unbekannt sind, nutze neutrale Platzhalter mit XXX statt Jobbörsen-Namen wie Xing, LinkedIn oder StepStone.
+- Der Betreff darf kein Markdown enthalten.
 - Schlussformel exakt:
 Mit freundlichen Grüßen
 
 ${personalData?.closingName || personalData?.name || 'XXX'}
 - Gib nur den fertigen Anschreiben-Text zurück, keine Erklärung.
+- Schreibe niemals Meta-Sätze wie "Der gewünschte Stil ist", "Relevant aus meiner Datenbasis", "Bitte diesen Entwurf prüfen", "Ausgelesene Unterlagen", "Strukturierte Profilanalyse" oder Hinweise über diesen Prompt.
 
 Stil: ${voice || 'klar und professionell'}
 
@@ -641,11 +647,8 @@ ${JSON.stringify(jobDetails ?? {}, null, 2)}
 Stellenanzeige:
 ${jobInput || ''}
 
-Ausgelesene Unterlagen:
-${profile.text || ''}
-
-Strukturierte Profilanalyse:
-${JSON.stringify(profile.insights ?? {}, null, 2)}
+Profilinformationen zur inhaltlichen Nutzung, nicht wörtlich kopieren:
+${profileContext}
 `.trim();
 }
 
@@ -670,6 +673,8 @@ Regeln:
 - Erhalte Absenderblock, Empfängerblock, Datum, Betreff, Anrede und Schlussformel.
 - Lasse Platzhalter wie XXX erhalten.
 - Erfinde keine neuen Arbeitgeber, Zahlen, Abschlüsse oder Erfahrungen.
+- Entferne Meta-Hinweise, Prompt-Kommentare und Sätze über Stil, Datenbasis oder KI.
+- Kein Markdown im Betreff.
 - Nutze Deutsch.
 - Zielstil: ${voice || 'klar und professionell'}.
 
@@ -682,6 +687,49 @@ ${JSON.stringify(jobDetails ?? {}, null, 2)}
 Aktueller Text:
 ${text}
 `.trim();
+}
+
+function buildProfileContext(profile) {
+  const insights = profile?.insights ?? {};
+  const documents = Array.isArray(profile?.documents) ? profile.documents : [];
+  const documentSummaries = documents
+    .filter((document) => document.summary && document.summary !== 'Kein Text auslesbar.')
+    .slice(0, 5)
+    .map((document) => `- ${document.type}: ${document.summary}`)
+    .join('\n');
+
+  return [
+    `Kompetenzen: ${(insights.skills ?? []).slice(0, 10).join(', ') || 'keine eindeutig erkannt'}`,
+    `Rollen/Erfahrung: ${(insights.roles ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
+    `Ausbildung/Zertifikate: ${(insights.education ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
+    `Arbeitsweise: ${(insights.strengths ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
+    documentSummaries ? `Dokumentauszüge:\n${documentSummaries}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+function cleanGeneratedLetter(text) {
+  const forbiddenLinePatterns = [
+    /^relevant aus meiner datenbasis\s*:/i,
+    /^der gewünschte stil ist\s*:/i,
+    /^bitte diesen entwurf/i,
+    /^stil\s*:/i,
+    /^prompt\s*:/i,
+    /^hinweis\s*:/i,
+    /^anweisung\s*:/i,
+    /^datenbasis\s*:/i,
+    /^ausgelesene unterlagen\s*:/i,
+    /^strukturierte profilanalyse\s*:/i,
+  ];
+
+  return String(text || '')
+    .replace(/^```[a-z]*\s*/i, '')
+    .replace(/```$/i, '')
+    .split('\n')
+    .map((line) => line.replace(/\*\*/g, '').trimEnd())
+    .filter((line) => !forbiddenLinePatterns.some((pattern) => pattern.test(line.trim())))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 async function generateWithProvider({ provider, apiKey, prompt }) {

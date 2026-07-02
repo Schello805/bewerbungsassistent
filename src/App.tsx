@@ -385,7 +385,7 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'KI-Generierung fehlgeschlagen.');
       }
       const data = await response.json() as { text: string };
-      setDraft(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile, voice }));
+      setDraft(cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile, voice })));
       setActiveLetterId(null);
     } catch (error) {
       setDraft(createDraft({ personalData, jobDetails, profile, voice }));
@@ -423,8 +423,12 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'KI-Vergleich fehlgeschlagen.');
       }
       const data = await response.json() as { candidates: AiCandidate[] };
-      setCandidates(data.candidates ?? []);
-      const firstGood = data.candidates?.find((candidate) => candidate.ok && candidate.text);
+      const cleanedCandidates = (data.candidates ?? []).map((candidate) => ({
+        ...candidate,
+        text: cleanGeneratedLetter(candidate.text),
+      }));
+      setCandidates(cleanedCandidates);
+      const firstGood = cleanedCandidates.find((candidate) => candidate.ok && candidate.text);
       if (firstGood) {
         setDraft(firstGood.text);
         setActiveLetterId(null);
@@ -467,7 +471,7 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'KI-Überarbeitung fehlgeschlagen.');
       }
       const data = await response.json() as { text: string };
-      setDraft(data.text || draft);
+      setDraft(cleanGeneratedLetter(data.text || draft));
       setActiveLetterId(null);
       setLetterStatus(`${rewriteLabels[mode]} fertig.`);
     } catch (error) {
@@ -1053,11 +1057,10 @@ function extractJobDetails(input: string): JobDetails {
 
 function createDraft({ personalData, jobDetails, profile, voice }: { personalData: PersonalData; jobDetails: JobDetails; profile: ProfileData; voice: string }) {
   const date = new Intl.DateTimeFormat('de-DE').format(new Date());
-  const keywords = profile.keywords.slice(0, 6).join(', ');
-  const cvSummary = profile.documents.find((document) => document.type === 'Lebenslauf')?.summary ?? profile.documents[0]?.summary ?? '';
   const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
   const requestedParagraphs = createRequestedInfoParagraphs(jobDetails.requestedInfo);
+  const profileStrengths = formatProfileStrengths(profile);
   const contactLine = [
     personalData.email,
     personalData.phone,
@@ -1080,16 +1083,57 @@ function createDraft({ personalData, jobDetails, profile, voice }: { personalDat
     '',
     jobDetails.salutation,
     '',
-    `mit großem Interesse bewerbe ich mich${titleReference}${companyReference}.`,
-    keywords ? `Aus meinem Lebenslauf bringe ich besonders folgende Erfahrungen mit: ${keywords}.` : 'Meine bisherigen Unterlagen zeigen eine strukturierte und zuverlässige Arbeitsweise.',
-    cvSummary ? `Relevant aus meiner Datenbasis: ${cvSummary}` : '',
+    `mit großem Interesse habe ich Ihre Ausschreibung${titleReference}${companyReference} gelesen. Die Verbindung aus Verantwortung, Qualität und praxisnaher Verbesserung spricht mich sehr an.`,
+    profileStrengths
+      ? `Besonders einbringen kann ich meine Erfahrung in ${profileStrengths}. Dabei arbeite ich strukturiert, zuverlässig und mit einem klaren Blick für umsetzbare Ergebnisse.`
+      : 'Meine bisherigen Unterlagen zeigen eine strukturierte, zuverlässige Arbeitsweise und die Fähigkeit, mich schnell in neue Aufgaben einzuarbeiten.',
+    'Gerne erläutere ich Ihnen in einem persönlichen Gespräch, wie ich Ihr Team konkret unterstützen kann.',
     ...requestedParagraphs,
-    `Der gewünschte Stil ist: ${voice}. Bitte diesen Entwurf vor dem Versand prüfen und persönliche Beispiele ergänzen.`,
     '',
     'Mit freundlichen Grüßen',
     '',
     personalData.closingName || personalData.name,
   ].filter((line) => line !== undefined).join('\n');
+}
+
+function formatProfileStrengths(profile: ProfileData) {
+  const rawValues = [
+    ...(profile.insights?.skills ?? []),
+    ...(profile.insights?.roles ?? []),
+    ...(profile.insights?.strengths ?? []),
+  ];
+  const blocked = new Set(['michael', 'schellenberger', 'herr', 'frau', 'köln', 'bechhofen', 'befriedigend', 'fachschule']);
+  const values = rawValues
+    .map((value) => value.trim())
+    .filter((value) => value.length >= 3 && !blocked.has(value.toLowerCase()))
+    .slice(0, 3);
+
+  return values.join(', ');
+}
+
+function cleanGeneratedLetter(text: string) {
+  const forbiddenLinePatterns = [
+    /^relevant aus meiner datenbasis\s*:/i,
+    /^der gewünschte stil ist\s*:/i,
+    /^bitte diesen entwurf/i,
+    /^stil\s*:/i,
+    /^prompt\s*:/i,
+    /^hinweis\s*:/i,
+    /^anweisung\s*:/i,
+    /^datenbasis\s*:/i,
+    /^ausgelesene unterlagen\s*:/i,
+    /^strukturierte profilanalyse\s*:/i,
+  ];
+
+  return text
+    .replace(/^```[a-z]*\s*/i, '')
+    .replace(/```$/i, '')
+    .split('\n')
+    .map((line) => line.replace(/\*\*/g, '').trimEnd())
+    .filter((line) => !forbiddenLinePatterns.some((pattern) => pattern.test(line.trim())))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function extractRequestedInfo(text: string): RequestedInfo[] {
@@ -1128,6 +1172,10 @@ function extractUrl(text: string) {
 function companyFromUrlString(url: string) {
   try {
     const hostname = new URL(url).hostname.replace(/^www\./, '');
+    const jobBoards = ['xing.com', 'linkedin.com', 'stepstone.de', 'indeed.com', 'indeed.de', 'monster.de', 'arbeitsagentur.de', 'stellenanzeigen.de', 'heyjobs.co', 'join.com'];
+    if (jobBoards.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))) {
+      return '';
+    }
     const name = hostname.split('.')[0].replaceAll('-', ' ');
     return titleCase(name);
   } catch {
@@ -1165,7 +1213,20 @@ function extractTitle(text: string, url: string) {
 }
 
 function cleanTitle(value: string) {
-  return value.replace(/\s+/g, ' ').replace(/\s*\(.*?\)\s*/g, ' ').trim().slice(0, 90);
+  const roleWords = /(leitung|leiter|head|manager|quality|qualität|qualitaet|sicherung|auditor|projekt|controller|controlling|prozess|operations|operative|sachbearbeiter|ingenieur|specialist|lead)/i;
+  let cleaned = value
+    .replace(/\b\d{5,}\b/g, ' ')
+    .replace(/\b(?:xing|linkedin|stepstone|indeed)\b/gi, ' ')
+    .replace(/\s*\(.*?\)\s*/g, ' ')
+    .replace(/\bBuechenbach\b/gi, ' ')
+    .replace(/Qualitaet/gi, 'Qualität')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const roleMatch = cleaned.match(roleWords);
+  if (roleMatch && roleMatch.index && roleMatch.index > 0 && roleMatch.index < 35) {
+    cleaned = cleaned.slice(roleMatch.index).trim();
+  }
+  return cleaned.slice(0, 90);
 }
 
 function titleCase(value: string) {
