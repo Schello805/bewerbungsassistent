@@ -888,19 +888,18 @@ textarea:focus {
 }
 
 .editor-toolbar {
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
+  gap: 12px;
 }
 
 .editor-toolbar > span {
-  padding-top: 0.62rem;
   color: var(--muted);
   font-weight: 900;
 }
 
 .toolbar-actions {
-  justify-content: flex-end;
-  max-width: 760px;
+  justify-content: flex-start;
+  max-width: none;
 }
 
 .toolbar-actions button {
@@ -1238,17 +1237,22 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
-  .create-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .topbar,
   .app-footer {
     align-items: flex-start;
     flex-direction: column;
   }
+}
 
-  .topbar { padding: 14px 0; }
+@media (max-width: 680px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 14px 0;
+  }
+
+  .create-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 560px) {
