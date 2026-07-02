@@ -12,6 +12,7 @@
     "start": "NODE_ENV=production node server/index.mjs"
   },
   "dependencies": {
+    "@picocss/pico": "^2.1.1",
     "@vitejs/plugin-react": "latest",
     "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
