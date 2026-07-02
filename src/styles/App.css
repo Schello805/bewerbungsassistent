@@ -1746,3 +1746,52 @@ textarea:focus {
     font-size: 0.94rem;
   }
 }
+
+/* Settings as a symmetric vertical card stack */
+.settings-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.settings-page .master-data-panel,
+.settings-page .ai-panel,
+.settings-page .integrations-panel,
+.settings-page .backup-panel,
+.settings-page .upload-panel {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.settings-page .master-data-panel .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.settings-page .ai-panel,
+.settings-page .integrations-panel,
+.settings-page .backup-panel {
+  min-height: auto;
+}
+
+.settings-page .backup-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.settings-page .panel-header {
+  align-items: flex-start;
+}
+
+@media (max-width: 720px) {
+  .settings-page {
+    max-width: none;
+  }
+
+  .settings-page .master-data-panel .form-grid,
+  .settings-page .backup-actions {
+    grid-template-columns: 1fr;
+  }
+}
