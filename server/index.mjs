@@ -394,7 +394,7 @@ app.post('/api/rewrite-letter', async (request, response, next) => {
   }
 });
 
-app.post('/api/compare-letter', async (request, response, next) => {
+app.post(['/api/compare-letter', '/compare-letter'], async (request, response, next) => {
   try {
     const requestApiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
     const apiKeys = getSetting('apiKeys', {});
