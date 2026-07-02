@@ -887,6 +887,20 @@ function ApplicationShell() {
             </div>
           </article>
 
+          <article className="panel backup-panel">
+            <div className="panel-header">
+              <div>
+                <h2>Backup</h2>
+                <p className="document-status">{backupStatus || 'Stammdaten, Unterlagen, API-Keys und Anschreiben sichern.'}</p>
+              </div>
+            </div>
+            <div className="backup-actions">
+              <button type="button" className="button primary" onClick={downloadBackup}><Download size={18} /> Backup herunterladen</button>
+              <button type="button" className="button secondary" onClick={() => backupInputRef.current?.click()}><FileUp size={18} /> Backup einspielen</button>
+              <input ref={backupInputRef} type="file" accept="application/json,.json" onChange={restoreBackup} className="visually-hidden" />
+            </div>
+          </article>
+
           <article className={isUploading ? 'panel upload-panel is-uploading' : 'panel upload-panel'}>
             <div className="panel-header">
               <div>
@@ -916,20 +930,6 @@ function ApplicationShell() {
                 </li>
               ))}
             </ul>
-          </article>
-
-          <article className="panel backup-panel">
-            <div className="panel-header">
-              <div>
-                <h2>Backup</h2>
-                <p className="document-status">{backupStatus || 'Stammdaten, Unterlagen, API-Keys und Anschreiben sichern.'}</p>
-              </div>
-            </div>
-            <div className="backup-actions">
-              <button type="button" className="button primary" onClick={downloadBackup}><Download size={18} /> Backup herunterladen</button>
-              <button type="button" className="button secondary" onClick={() => backupInputRef.current?.click()}><FileUp size={18} /> Backup einspielen</button>
-              <input ref={backupInputRef} type="file" accept="application/json,.json" onChange={restoreBackup} className="visually-hidden" />
-            </div>
           </article>
         </section>
         )}
