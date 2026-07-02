@@ -420,7 +420,7 @@ function ApplicationShell() {
         }),
       });
       if (!response.ok) {
-        const data = await response.json() as { error?: string };
+        const data = await readApiError(response);
         throw new Error(data.error ?? 'KI-Vergleich fehlgeschlagen.');
       }
       const data = await response.json() as { candidates: AiCandidate[] };
@@ -1152,6 +1152,19 @@ function cleanGeneratedLetter(text: string) {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+async function readApiError(response: Response): Promise<{ error?: string }> {
+  const contentType = response.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) {
+    return response.json().catch(() => ({}));
+  }
+  const text = await response.text().catch(() => '');
+  return {
+    error: text.trim()
+      ? `Serverfehler ${response.status}: ${text.trim().slice(0, 180)}`
+      : `Serverfehler ${response.status}`,
+  };
 }
 
 function extractRequestedInfo(text: string): RequestedInfo[] {
