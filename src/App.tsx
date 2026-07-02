@@ -122,6 +122,7 @@ function ApplicationShell() {
   const [backupStatus, setBackupStatus] = useState('');
   const [activeLetterId, setActiveLetterId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<AiCandidate[]>([]);
+  const [activeCandidateIndex, setActiveCandidateIndex] = useState(0);
   const [view, setView] = useState<'apply' | 'settings'>('apply');
   const [voice, setVoice] = useState(voiceOptions[0]);
   const [provider, setProvider] = useState(providerOptions[0]);
@@ -141,6 +142,7 @@ function ApplicationShell() {
   const hasApiKey = !providerNeedsApiKey || apiKey.trim().length > 0 || apiKeyProviders.includes(provider);
   const currentProviderHasStoredKey = apiKeyProviders.includes(provider);
   const apiKeyDisplayValue = apiKey || (!isApiKeyEditing && currentProviderHasStoredKey ? '••••••••••••' : '');
+  const activeCandidate = candidates[Math.min(activeCandidateIndex, Math.max(candidates.length - 1, 0))];
 
   const loadProfile = useCallback(async () => {
     try {
@@ -401,6 +403,7 @@ function ApplicationShell() {
     setIsComparing(true);
     setLetterStatus('KI-Vergleich läuft ...');
     setCandidates([]);
+    setActiveCandidateIndex(0);
     try {
       const resolvedJobInput = await resolveJobInput(jobInput);
       if (resolvedJobInput !== jobInput) {
@@ -429,6 +432,7 @@ function ApplicationShell() {
         text: cleanGeneratedLetter(candidate.text),
       }));
       setCandidates(cleanedCandidates);
+      setActiveCandidateIndex(0);
       const firstGood = cleanedCandidates.find((candidate) => candidate.ok && candidate.text);
       if (firstGood) {
         setDraft(firstGood.text);
@@ -801,25 +805,39 @@ function ApplicationShell() {
             <section className="saved-letters" aria-label="Gespeicherte Anschreiben">
               {candidates.length > 0 && (
                 <div className="candidate-list">
-                  <h3>KI-Vergleich</h3>
-                  <div className="candidate-grid">
-                    {candidates.map((candidate) => (
-                      <article key={candidate.provider} className={candidate.ok ? 'candidate-card' : 'candidate-card has-error'}>
-                        <div>
-                          <strong>{candidate.provider}</strong>
-                          <small>{candidate.ok ? `${candidate.text.split(/\s+/).filter(Boolean).length} Wörter` : candidate.error}</small>
-                        </div>
-                        {candidate.ok && <p>{candidate.text.slice(0, 260)}...</p>}
-                        {candidate.ok && (
-                          <button type="button" className="text-button" onClick={() => {
-                            setDraft(candidate.text);
-                            setActiveLetterId(null);
-                            setLetterStatus(`${candidate.provider} übernommen.`);
-                          }}>Übernehmen</button>
-                        )}
-                      </article>
-                    ))}
+                  <div className="candidate-head">
+                    <div>
+                      <h3>KI-Vergleich</h3>
+                      <p>{candidates.length} Ergebnis{candidates.length === 1 ? '' : 'se'} verfügbar</p>
+                    </div>
+                    <div className="candidate-nav" aria-label="KI-Ergebnisse wechseln">
+                      <button type="button" onClick={() => setActiveCandidateIndex((index) => (index - 1 + candidates.length) % candidates.length)} disabled={candidates.length < 2} aria-label="Vorheriges KI-Ergebnis">‹</button>
+                      <span>{Math.min(activeCandidateIndex + 1, candidates.length)} / {candidates.length}</span>
+                      <button type="button" onClick={() => setActiveCandidateIndex((index) => (index + 1) % candidates.length)} disabled={candidates.length < 2} aria-label="Nächstes KI-Ergebnis">›</button>
+                    </div>
                   </div>
+                  {activeCandidate && (
+                    <article className={activeCandidate.ok ? 'candidate-card candidate-carousel-card' : 'candidate-card candidate-carousel-card has-error'}>
+                      <div className="candidate-card-header">
+                        <div>
+                          <strong>{activeCandidate.provider}</strong>
+                          <small>{activeCandidate.ok ? `${activeCandidate.text.split(/\s+/).filter(Boolean).length} Wörter` : activeCandidate.error}</small>
+                        </div>
+                        {activeCandidate.ok && (
+                          <button type="button" className="text-button" onClick={() => {
+                            setDraft(activeCandidate.text);
+                            setActiveLetterId(null);
+                            setLetterStatus(`${activeCandidate.provider} übernommen.`);
+                          }}>Diese Version übernehmen</button>
+                        )}
+                      </div>
+                      {activeCandidate.ok ? (
+                        <pre className="candidate-text">{activeCandidate.text}</pre>
+                      ) : (
+                        <p>{activeCandidate.error || 'Diese KI konnte kein Ergebnis liefern.'}</p>
+                      )}
+                    </article>
+                  )}
                 </div>
               )}
               <div>

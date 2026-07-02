@@ -1005,18 +1005,23 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
   gap: 18px;
-  align-items: start;
+  align-items: stretch;
+  --letter-pane-height: 640px;
 }
 
 .draft-editor {
-  min-height: 560px;
+  height: var(--letter-pane-height);
+  min-height: var(--letter-pane-height);
+  max-height: var(--letter-pane-height);
   border-radius: 20px;
   font-family: ui-serif, Georgia, "Times New Roman", serif;
   font-size: 1.02rem;
   line-height: 1.22;
+  overflow-y: auto;
 }
 
 .letter-preview {
+  display: flex;
   min-width: 0;
   border-radius: 24px;
   background:
@@ -1026,8 +1031,10 @@ textarea:focus {
 }
 
 .preview-page {
-  min-height: 560px;
-  max-height: 720px;
+  flex: 1;
+  height: calc(var(--letter-pane-height) - 36px);
+  min-height: calc(var(--letter-pane-height) - 36px);
+  max-height: calc(var(--letter-pane-height) - 36px);
   overflow-y: auto;
   border: 1px solid rgba(230, 222, 209, 0.95);
   border-radius: 10px;
@@ -1113,15 +1120,58 @@ textarea:focus {
 
 .candidate-list {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   border-bottom: 1px solid var(--line);
   padding-bottom: 16px;
 }
 
-.candidate-grid {
+.candidate-head,
+.candidate-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.candidate-head p {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.candidate-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  padding: 4px;
+}
+
+.candidate-nav button {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: #111827;
+  color: #fff;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.candidate-nav button:disabled {
+  background: #e5e7eb;
+  color: #94a3b8;
+}
+
+.candidate-nav span {
+  min-width: 42px;
+  text-align: center;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .candidate-card {
@@ -1144,6 +1194,26 @@ textarea:focus {
 
 .candidate-card p {
   margin: 0;
+}
+
+.candidate-carousel-card {
+  border-radius: 16px;
+  background: #fff;
+}
+
+.candidate-text {
+  max-height: 360px;
+  margin: 0;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 12px;
+  color: #111827;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: 0.92rem;
+  line-height: 1.25;
 }
 
 .saved-letters h3 { margin-bottom: 4px; }
@@ -1758,6 +1828,21 @@ textarea:focus {
   .settings-page .master-data-panel .form-grid {
     grid-template-columns: 1fr;
   }
+
+  .editor-preview-grid {
+    --letter-pane-height: 520px;
+  }
+
+  .candidate-head,
+  .candidate-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .candidate-nav {
+    align-self: stretch;
+    justify-content: space-between;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1769,6 +1854,10 @@ textarea:focus {
   .panel,
   .editor-layout {
     padding: 14px;
+  }
+
+  .editor-preview-grid {
+    --letter-pane-height: 440px;
   }
 
   .brand {
