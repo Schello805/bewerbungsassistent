@@ -430,6 +430,17 @@ textarea:focus {
   font-size: 1.04rem;
 }
 
+.compare-action {
+  margin-top: 8px;
+}
+
+.compare-cost-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 .master-data-panel {
   scroll-margin-top: 92px;
 }

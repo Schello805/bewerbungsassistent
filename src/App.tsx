@@ -707,6 +707,7 @@ function ApplicationShell() {
               <RefreshCw size={18} />
               {isComparing ? 'KI-Vergleich läuft ...' : 'KIs vergleichen'}
             </button>
+            <p className="compare-cost-note">Hinweis: Beim Vergleich wird jede verfügbare KI separat abgefragt. Dadurch können je Anbieter zusätzliche Kosten entstehen.</p>
           </article>
 
           <aside className="panel analysis-panel">
