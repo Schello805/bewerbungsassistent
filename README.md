@@ -11,13 +11,15 @@ Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bl
 - sichtbares Upload-Feedback mit Fortschrittsanimation
 - Stellenanzeige oder Link einfügen
 - Stellenanzeigen-Link serverseitig auslesen
-- Anschreiben per OpenAI, Anthropic, Gemini, Mistral oder OpenRouter erzeugen
+- Anschreiben per OpenAI, Gemini, Anthropic, Mistral, OpenRouter oder lokalem Llama/Ollama erzeugen
+- mehrere KI-Anbieter vergleichen und die beste Version übernehmen
+- Bewerbungsunterlagen strukturiert nach Skills, Rollen, Ausbildung und Stärken analysieren
 - Anschreiben mit Absenderdaten, Empfängerblock, Betreff und Schlussformel erstellen
 - gewünschte Angaben wie Wunschgehalt, Eintrittstermin oder Referenznummer als Platzhalter erkennen
 - Anschreiben direkt bearbeiten
 - fertige Versionen zentral in SQLite speichern
 - DIN-A4-Vorschau neben dem Editor anzeigen
-- DOCX herunterladen, Text kopieren oder Google Docs öffnen
+- DOCX herunterladen, Text kopieren oder per Google OAuth direkt in Google Docs erstellen
 - gespeicherte Anschreiben öffnen, weiterbearbeiten und löschen
 
 ## Installation auf Debian 13 oder Ubuntu 24.04
@@ -83,6 +85,10 @@ Persönliche Dateien in `datenbasis/` und SQLite-Dateien in `data/` werden nicht
 API-Keys werden zentral in der lokalen SQLite-Datenbank gespeichert, damit die App im lokalen Netzwerk von mehreren Geräten genutzt werden kann. Schütze Server, Datenbankdatei und Backups vor unbefugtem Zugriff.
 
 Backups können direkt in der App unter `Einstellungen` heruntergeladen und wieder eingespielt werden. Die Backup-Datei enthält Stammdaten, Unterlagen, gespeicherte Anschreiben, Einstellungen und API-Keys.
+
+Für `Llama lokal` wird ein laufender Ollama-Server erwartet. Standard: `OLLAMA_URL=http://127.0.0.1:11434/api/generate` und `OLLAMA_MODEL=llama3.1`.
+
+Für direktes Erstellen in Google Docs muss in den Einstellungen eine Google OAuth Client-ID hinterlegt werden. Ohne Client-ID öffnet die App `docs.new` und kopiert den Text in die Zwischenablage.
 
 ## Entwicklung
 

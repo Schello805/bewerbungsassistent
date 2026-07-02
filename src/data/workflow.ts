@@ -7,7 +7,7 @@ export const voiceOptions = [
   'Warm und persönlich',
 ];
 
-export const providerOptions = ['OpenAI', 'Anthropic', 'Google Gemini', 'Mistral AI', 'OpenRouter'];
+export const providerOptions = ['OpenAI', 'Google Gemini', 'Anthropic', 'Mistral AI', 'OpenRouter', 'Llama lokal'];
 
 export const documentTypes = [
   'Lebenslauf',
