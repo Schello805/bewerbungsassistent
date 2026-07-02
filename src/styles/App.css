@@ -631,6 +631,52 @@ textarea:focus {
   margin: 8px 0 0;
 }
 
+.oauth-help {
+  border: 1px solid rgba(66, 133, 244, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+  margin-top: 14px;
+  padding: 0.8rem 0.95rem;
+}
+
+.oauth-help summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.oauth-help summary::marker {
+  color: var(--brand);
+}
+
+.oauth-help ol {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 12px 1.1rem;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.oauth-help code {
+  border: 1px solid rgba(103, 80, 245, 0.15);
+  border-radius: 8px;
+  background: rgba(103, 80, 245, 0.08);
+  padding: 0.08rem 0.3rem;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.oauth-help a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brand-dark);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
 .ai-panel {
   justify-content: flex-start;
   min-height: 310px;
