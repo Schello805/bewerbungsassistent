@@ -457,6 +457,36 @@ textarea:focus {
   gap: 14px;
 }
 
+.provider-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 0 0 14px;
+}
+
+.provider-button {
+  border: 1px solid #d9dee8;
+  border-radius: 999px;
+  background: #f3f5f9;
+  color: #536070;
+  padding: 0.48rem 0.72rem;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.provider-button.active {
+  border-color: rgba(103, 80, 245, 0.28);
+  background: linear-gradient(135deg, rgba(103, 80, 245, 0.16), rgba(47, 183, 232, 0.12));
+  color: var(--ink);
+  box-shadow: 0 10px 24px rgba(103, 80, 245, 0.13);
+}
+
+.provider-button span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .master-data-panel .form-grid {
   flex: 1;
   align-content: stretch;
@@ -526,6 +556,15 @@ textarea:focus {
   border-color: rgba(22, 163, 74, 0.28);
   background: rgba(22, 163, 74, 0.1);
   color: var(--success-dark);
+}
+
+.local-ai-note,
+.google-client-box {
+  margin-top: 12px;
+}
+
+.google-client-box .field-note {
+  margin: 8px 0 0;
 }
 
 .ai-panel {
@@ -856,6 +895,41 @@ textarea:focus {
   gap: 12px;
   border-top: 1px solid var(--line);
   padding-top: 16px;
+}
+
+.candidate-list {
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+}
+
+.candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.candidate-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(103, 80, 245, 0.14);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(103, 80, 245, 0.08), rgba(47, 183, 232, 0.07)), #fff;
+  padding: 13px;
+}
+
+.candidate-card.has-error {
+  border-color: rgba(180, 35, 24, 0.18);
+  background: #fff7f6;
+}
+
+.candidate-card strong {
+  display: block;
+}
+
+.candidate-card p {
+  margin: 0;
 }
 
 .saved-letters h3 { margin-bottom: 4px; }

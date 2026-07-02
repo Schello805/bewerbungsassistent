@@ -32,6 +32,12 @@ type ProfileData = {
   documents: ProfileDocument[];
   text: string;
   keywords: string[];
+  insights?: {
+    skills: string[];
+    roles: string[];
+    education: string[];
+    strengths: string[];
+  };
 };
 
 type PersonalData = {
@@ -59,6 +65,12 @@ type JobDetails = {
 
 type RequestedInfo = 'salary' | 'startDate' | 'availability' | 'reference' | 'documents' | 'motivation';
 type RewriteMode = 'modern' | 'detailed' | 'confident' | 'formal' | 'alternative' | 'shorten';
+type AiCandidate = {
+  provider: string;
+  text: string;
+  ok: boolean;
+  error?: string;
+};
 
 const rewriteLabels: Record<RewriteMode, string> = {
   modern: 'Moderner',
@@ -104,8 +116,11 @@ function ApplicationShell() {
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRewriting, setIsRewriting] = useState(false);
+  const [isComparing, setIsComparing] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [backupStatus, setBackupStatus] = useState('');
   const [activeLetterId, setActiveLetterId] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<AiCandidate[]>([]);
   const [view, setView] = useState<'apply' | 'settings'>('apply');
   const [voice, setVoice] = useState(voiceOptions[0]);
   const [provider, setProvider] = useState(providerOptions[0]);
@@ -113,13 +128,15 @@ function ApplicationShell() {
   const [apiKeyProviders, setApiKeyProviders] = useState<string[]>([]);
   const [apiKeyStatus, setApiKeyStatus] = useState('');
   const [isApiKeyEditing, setIsApiKeyEditing] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
   const wordCount = useMemo(() => draft.trim().split(/\s+/).filter(Boolean).length, [draft]);
   const jobDetails = useMemo(() => extractJobDetails(jobInput), [jobInput]);
   const canCreateLetter = jobInput.trim().length > 8 && personalData.name.trim().length > 0;
-  const hasApiKey = apiKey.trim().length > 0 || apiKeyProviders.includes(provider);
+  const providerNeedsApiKey = provider !== 'Llama lokal';
+  const hasApiKey = !providerNeedsApiKey || apiKey.trim().length > 0 || apiKeyProviders.includes(provider);
   const currentProviderHasStoredKey = apiKeyProviders.includes(provider);
   const apiKeyDisplayValue = apiKey || (!isApiKeyEditing && currentProviderHasStoredKey ? '••••••••••••' : '');
 
@@ -167,6 +184,7 @@ function ApplicationShell() {
         provider?: string | null;
         voice?: string | null;
         apiKeyProviders?: string[];
+        googleClientId?: string | null;
       };
       if (data.personalData) {
         setPersonalData({ ...defaultPersonalData, ...data.personalData });
@@ -176,6 +194,9 @@ function ApplicationShell() {
       }
       if (data.voice && voiceOptions.includes(data.voice)) {
         setVoice(data.voice);
+      }
+      if (data.googleClientId) {
+        setGoogleClientId(data.googleClientId);
       }
       setApiKeyProviders(Array.isArray(data.apiKeyProviders) ? data.apiKeyProviders : []);
     } catch {
@@ -208,7 +229,7 @@ function ApplicationShell() {
     void migrateLegacyApiKey();
   }, [apiKeyProviders, provider]);
 
-  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string }) {
+  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string }) {
     await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -235,6 +256,11 @@ function ApplicationShell() {
   function updateVoice(value: string) {
     setVoice(value);
     void saveSettings({ voice: value });
+  }
+
+  function updateGoogleClientId(value: string) {
+    setGoogleClientId(value);
+    void saveSettings({ googleClientId: value });
   }
 
   function updateApiKey(value: string) {
@@ -310,6 +336,7 @@ function ApplicationShell() {
   async function createLetter() {
     setIsGenerating(true);
     setLetterStatus('');
+    setCandidates([]);
     try {
       const resolvedJobInput = await resolveJobInput(jobInput);
       if (resolvedJobInput !== jobInput) {
@@ -348,6 +375,48 @@ function ApplicationShell() {
     } finally {
       setIsGenerating(false);
       window.setTimeout(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
+  }
+
+  async function compareProviders() {
+    setIsComparing(true);
+    setLetterStatus('KI-Vergleich läuft ...');
+    setCandidates([]);
+    try {
+      const resolvedJobInput = await resolveJobInput(jobInput);
+      if (resolvedJobInput !== jobInput) {
+        setJobInput(resolvedJobInput);
+      }
+      const resolvedJobDetails = extractJobDetails(resolvedJobInput);
+      const response = await fetch('/api/compare-letter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          apiKey: apiKey.trim() || undefined,
+          voice,
+          personalData,
+          jobInput: resolvedJobInput,
+          jobDetails: resolvedJobDetails,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? 'KI-Vergleich fehlgeschlagen.');
+      }
+      const data = await response.json() as { candidates: AiCandidate[] };
+      setCandidates(data.candidates ?? []);
+      const firstGood = data.candidates?.find((candidate) => candidate.ok && candidate.text);
+      if (firstGood) {
+        setDraft(firstGood.text);
+        setActiveLetterId(null);
+      }
+      setLetterStatus(firstGood ? 'KI-Vergleich fertig. Du kannst eine Version übernehmen.' : 'Keine KI-Version konnte erstellt werden.');
+      window.setTimeout(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    } catch (error) {
+      setLetterStatus(error instanceof Error ? error.message : 'KI-Vergleich fehlgeschlagen.');
+    } finally {
+      setIsComparing(false);
     }
   }
 
@@ -457,9 +526,50 @@ function ApplicationShell() {
   }
 
   async function openGoogleDocs() {
-    await navigator.clipboard.writeText(draft);
-    window.open('https://docs.new', '_blank', 'noopener,noreferrer');
-    setLetterStatus('Google Docs geöffnet. Der Text ist in der Zwischenablage.');
+    if (!draft.trim()) return;
+    setIsGoogleLoading(true);
+    try {
+      if (!googleClientId.trim()) {
+        await navigator.clipboard.writeText(draft);
+        window.open('https://docs.new', '_blank', 'noopener,noreferrer');
+        setLetterStatus('Google Docs geöffnet. Der Text ist in der Zwischenablage.');
+        return;
+      }
+
+      const accessToken = await requestGoogleAccessToken(googleClientId.trim());
+      const createResponse = await fetch('https://docs.googleapis.com/v1/documents', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ title: jobDetails.subject || 'Bewerbungsanschreiben' }),
+      });
+      if (!createResponse.ok) throw new Error('Google-Dokument konnte nicht erstellt werden.');
+      const document = await createResponse.json() as { documentId: string };
+      const insertResponse = await fetch(`https://docs.googleapis.com/v1/documents/${document.documentId}:batchUpdate`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [{
+            insertText: {
+              location: { index: 1 },
+              text: draft,
+            },
+          }],
+        }),
+      });
+      if (!insertResponse.ok) throw new Error('Text konnte nicht in Google Docs eingefügt werden.');
+      window.open(`https://docs.google.com/document/d/${document.documentId}/edit`, '_blank', 'noopener,noreferrer');
+      setLetterStatus('Google Docs Dokument erstellt.');
+    } catch (error) {
+      setLetterStatus(error instanceof Error ? error.message : 'Google Docs konnte nicht geöffnet werden.');
+    } finally {
+      setIsGoogleLoading(false);
+    }
   }
 
   async function resolveJobInput(input: string) {
@@ -593,6 +703,10 @@ function ApplicationShell() {
               <WandSparkles size={18} />
               {isGenerating ? 'Anschreiben wird erstellt ...' : 'Anschreiben erstellen'}
             </button>
+            <button type="button" className="button secondary compare-action" onClick={compareProviders} disabled={!canCreateLetter || isComparing}>
+              <RefreshCw size={18} />
+              {isComparing ? 'KI-Vergleich läuft ...' : 'KIs vergleichen'}
+            </button>
           </article>
 
           <aside className="panel analysis-panel">
@@ -603,6 +717,7 @@ function ApplicationShell() {
               <span>{documents.length} Unterlagen</span>
               <span>{hasApiKey ? provider : 'Lokale Vorlage'}</span>
               <span>{voice}</span>
+              {profile.insights?.skills?.[0] && <span>{profile.insights.skills.slice(0, 3).join(' · ')}</span>}
             </div>
           </aside>
         </section>
@@ -632,10 +747,33 @@ function ApplicationShell() {
             <div className="editor-meta">
               <button type="button" className="button success" onClick={saveFinalLetter} disabled={!draft}><Save size={18} /> Fertig speichern</button>
               <button type="button" className="button primary" onClick={downloadDocx} disabled={!draft}><Download size={18} /> DOCX herunterladen</button>
-              <button type="button" className="button google" onClick={openGoogleDocs} disabled={!draft}><Link2 size={18} /> Google Docs öffnen</button>
+              <button type="button" className="button google" onClick={openGoogleDocs} disabled={!draft || isGoogleLoading}><Link2 size={18} /> {isGoogleLoading ? 'Google Docs öffnet ...' : 'Google Docs öffnen'}</button>
               <button type="button" className="button secondary" onClick={copyForGoogleDocs} disabled={!draft}><Link2 size={18} /> Text kopieren</button>
             </div>
             <section className="saved-letters" aria-label="Gespeicherte Anschreiben">
+              {candidates.length > 0 && (
+                <div className="candidate-list">
+                  <h3>KI-Vergleich</h3>
+                  <div className="candidate-grid">
+                    {candidates.map((candidate) => (
+                      <article key={candidate.provider} className={candidate.ok ? 'candidate-card' : 'candidate-card has-error'}>
+                        <div>
+                          <strong>{candidate.provider}</strong>
+                          <small>{candidate.ok ? `${candidate.text.split(/\s+/).filter(Boolean).length} Wörter` : candidate.error}</small>
+                        </div>
+                        {candidate.ok && <p>{candidate.text.slice(0, 260)}...</p>}
+                        {candidate.ok && (
+                          <button type="button" className="text-button" onClick={() => {
+                            setDraft(candidate.text);
+                            setActiveLetterId(null);
+                            setLetterStatus(`${candidate.provider} übernommen.`);
+                          }}>Übernehmen</button>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <h3>Gespeicherte Versionen</h3>
                 {letterStatus && <p>{letterStatus}</p>}
@@ -680,15 +818,19 @@ function ApplicationShell() {
 
           <article className="panel ai-panel">
             <h2>KI</h2>
+            <div className="provider-picker" aria-label="KI-Anbieter auswählen">
+              {providerOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={provider === option ? 'provider-button active' : 'provider-button'}
+                  onClick={() => updateProvider(option)}
+                >
+                  <span>{providerHasUsableKey(option, apiKeyProviders) ? '●' : '○'} {option}</span>
+                </button>
+              ))}
+            </div>
             <div className="settings-grid">
-              <label>
-                Anbieter
-                <select value={provider} onChange={(event) => updateProvider(event.target.value)}>
-                  {providerOptions.map((option) => (
-                    <option key={option} value={option}>{apiKeyProviders.includes(option) ? '✓ ' : ''}{option}</option>
-                  ))}
-                </select>
-              </label>
               <label>
                 Stil
                 <select value={voice} onChange={(event) => updateVoice(event.target.value)}>
@@ -696,40 +838,41 @@ function ApplicationShell() {
                 </select>
               </label>
             </div>
-            <label className="api-field">
-              <span><KeyRound size={18} /> API-Key</span>
-              <input
-                type="password"
-                placeholder={`${provider} API-Key`}
-                value={apiKeyDisplayValue}
-                onFocus={() => setIsApiKeyEditing(true)}
-                onBlur={() => {
-                  if (!apiKey.trim()) setIsApiKeyEditing(false);
-                }}
-                onChange={(event) => updateApiKey(event.target.value)}
-                autoComplete="off"
-              />
-            </label>
-            <div className="api-note-row">
-              <p className="field-note">
-                {apiKeyStatus || (currentProviderHasStoredKey ? `${provider} API-Key gespeichert.` : `${provider} API-Key eintragen.`)}
-              </p>
-              {apiKey.trim().length > 0 && (
-                <button type="button" className="text-button" onClick={saveApiKey}>Speichern</button>
-              )}
-              {currentProviderHasStoredKey && (
-                <button type="button" className="text-button" onClick={removeApiKey}>Entfernen</button>
-              )}
-            </div>
-            {apiKeyProviders.length > 0 && (
-              <div className="provider-key-list" aria-label="Gespeicherte API-Keys">
-                {providerOptions.map((option) => (
-                  <span key={option} className={apiKeyProviders.includes(option) ? 'is-stored' : ''}>
-                    {apiKeyProviders.includes(option) ? '●' : '○'} {option}
-                  </span>
-                ))}
-              </div>
+            {providerNeedsApiKey ? (
+              <>
+                <label className="api-field">
+                  <span><KeyRound size={18} /> API-Key</span>
+                  <input
+                    type="password"
+                    placeholder={`${provider} API-Key`}
+                    value={apiKeyDisplayValue}
+                    onFocus={() => setIsApiKeyEditing(true)}
+                    onBlur={() => {
+                      if (!apiKey.trim()) setIsApiKeyEditing(false);
+                    }}
+                    onChange={(event) => updateApiKey(event.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
+                <div className="api-note-row">
+                  <p className="field-note">
+                    {apiKeyStatus || (currentProviderHasStoredKey ? `${provider} API-Key gespeichert.` : `${provider} API-Key eintragen.`)}
+                  </p>
+                  {apiKey.trim().length > 0 && (
+                    <button type="button" className="text-button" onClick={saveApiKey}>Speichern</button>
+                  )}
+                  {currentProviderHasStoredKey && (
+                    <button type="button" className="text-button" onClick={removeApiKey}>Entfernen</button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="field-note local-ai-note">Llama lokal nutzt Ollama auf dem Server unter <code>http://localhost:11434</code>. Kein API-Key nötig.</p>
             )}
+            <div className="google-client-box">
+              <TextField label="Google OAuth Client-ID" value={googleClientId} onChange={updateGoogleClientId} />
+              <p className="field-note">Für direktes Erstellen in Google Docs. Ohne Client-ID öffnet die App docs.new und kopiert den Text.</p>
+            </div>
           </article>
 
           <article className={isUploading ? 'panel upload-panel is-uploading' : 'panel upload-panel'}>
@@ -975,6 +1118,67 @@ function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function providerHasUsableKey(provider: string, apiKeyProviders: string[]) {
+  return provider === 'Llama lokal' || apiKeyProviders.includes(provider);
+}
+
+async function requestGoogleAccessToken(clientId: string): Promise<string> {
+  await loadGoogleIdentityScript();
+
+  return new Promise((resolve, reject) => {
+    const google = (window as unknown as { google?: {
+      accounts?: {
+        oauth2?: {
+          initTokenClient: (options: {
+            client_id: string;
+            scope: string;
+            callback: (response: { access_token?: string; error?: string }) => void;
+          }) => { requestAccessToken: () => void };
+        };
+      };
+    } }).google;
+    const tokenClient = google?.accounts?.oauth2?.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file',
+      callback: (response) => {
+        if (response.error || !response.access_token) {
+          reject(new Error(response.error || 'Google-Anmeldung fehlgeschlagen.'));
+          return;
+        }
+        resolve(response.access_token);
+      },
+    });
+
+    if (!tokenClient) {
+      reject(new Error('Google-Anmeldung konnte nicht geladen werden.'));
+      return;
+    }
+
+    tokenClient.requestAccessToken();
+  });
+}
+
+function loadGoogleIdentityScript() {
+  if ((window as unknown as { google?: unknown }).google) return Promise.resolve();
+
+  return new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Google-Anmeldung konnte nicht geladen werden.')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Google-Anmeldung konnte nicht geladen werden.'));
+    document.head.appendChild(script);
+  });
 }
 
 function getApiKeyStorageKey(provider: string) {

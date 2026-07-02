@@ -111,6 +111,7 @@ app.get('/api/settings', (_request, response, next) => {
       personalData: getSetting('personalData', null),
       provider: getSetting('provider', null),
       voice: getSetting('voice', null),
+      googleClientId: getSetting('googleClientId', null),
       apiKeyProviders: Object.entries(apiKeys)
         .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
         .map(([key]) => key),
@@ -130,6 +131,9 @@ app.put('/api/settings', (request, response, next) => {
     }
     if ('voice' in request.body) {
       setSetting('voice', request.body.voice);
+    }
+    if ('googleClientId' in request.body) {
+      setSetting('googleClientId', request.body.googleClientId);
     }
     if ('apiKey' in request.body) {
       const apiKeys = getSetting('apiKeys', {});
@@ -347,7 +351,7 @@ app.post('/api/generate-letter', async (request, response, next) => {
       profile: await readProfileFromDataDir(),
     });
 
-    if (!apiKey) {
+    if (providerRequiresApiKey(provider) && !apiKey) {
       response.status(400).json({ error: 'Kein API-Key eingetragen.' });
       return;
     }
@@ -366,7 +370,7 @@ app.post('/api/rewrite-letter', async (request, response, next) => {
     const apiKey = requestApiKey || getProviderApiKey(provider);
     const text = typeof request.body.text === 'string' ? request.body.text.trim() : '';
 
-    if (!apiKey) {
+    if (providerRequiresApiKey(provider) && !apiKey) {
       response.status(400).json({ error: 'Kein API-Key eingetragen.' });
       return;
     }
@@ -385,6 +389,44 @@ app.post('/api/rewrite-letter', async (request, response, next) => {
     });
     const rewrittenText = await generateWithProvider({ provider, apiKey, prompt });
     response.json({ text: rewrittenText || text });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/compare-letter', async (request, response, next) => {
+  try {
+    const requestApiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
+    const apiKeys = getSetting('apiKeys', {});
+    const providers = getComparableProviders(apiKeys, request.body.provider, requestApiKey);
+    const profile = await readProfileFromDataDir();
+    const prompt = buildAiPrompt({
+      personalData: request.body.personalData,
+      jobInput: request.body.jobInput,
+      jobDetails: request.body.jobDetails,
+      voice: request.body.voice,
+      profile,
+    });
+
+    if (providers.length === 0) {
+      response.status(400).json({ error: 'Keine KI mit gespeichertem Key verfügbar.' });
+      return;
+    }
+
+    const candidates = [];
+    for (const candidateProvider of providers) {
+      try {
+        const apiKey = candidateProvider === request.body.provider && requestApiKey
+          ? requestApiKey
+          : getProviderApiKey(candidateProvider);
+        const text = await generateWithProvider({ provider: candidateProvider, apiKey, prompt });
+        candidates.push({ provider: candidateProvider, text, ok: true });
+      } catch (error) {
+        candidates.push({ provider: candidateProvider, text: '', ok: false, error: error instanceof Error ? error.message : 'Fehler' });
+      }
+    }
+
+    response.json({ candidates });
   } catch (error) {
     next(error);
   }
@@ -453,6 +495,18 @@ function getProviderApiKey(provider) {
   const apiKeys = getSetting('apiKeys', {});
   const apiKey = apiKeys?.[provider];
   return typeof apiKey === 'string' ? apiKey.trim() : '';
+}
+
+function providerRequiresApiKey(provider) {
+  return provider !== 'Llama lokal';
+}
+
+function getComparableProviders(apiKeys, selectedProvider, requestApiKey = '') {
+  const savedProviders = Object.entries(apiKeys)
+    .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+    .map(([provider]) => provider);
+  const providers = [...new Set([selectedProvider, ...savedProviders, 'Llama lokal'].filter(Boolean))];
+  return providers.filter((provider) => provider === 'Llama lokal' || savedProviders.includes(provider) || (provider === selectedProvider && requestApiKey));
 }
 
 async function createBackup() {
@@ -589,6 +643,9 @@ ${jobInput || ''}
 
 Ausgelesene Unterlagen:
 ${profile.text || ''}
+
+Strukturierte Profilanalyse:
+${JSON.stringify(profile.insights ?? {}, null, 2)}
 `.trim();
 }
 
@@ -628,6 +685,9 @@ ${text}
 }
 
 async function generateWithProvider({ provider, apiKey, prompt }) {
+  if (provider === 'Llama lokal') {
+    return generateOllama({ prompt });
+  }
   if (provider === 'Anthropic') {
     return generateAnthropic({ apiKey, prompt });
   }
@@ -651,6 +711,21 @@ async function generateWithProvider({ provider, apiKey, prompt }) {
     });
   }
   return generateOpenAI({ apiKey, prompt });
+}
+
+async function generateOllama({ prompt }) {
+  const response = await fetch(process.env.OLLAMA_URL || 'http://127.0.0.1:11434/api/generate', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: process.env.OLLAMA_MODEL || 'llama3.1',
+      prompt,
+      stream: false,
+      options: { temperature: 0.4 },
+    }),
+  });
+  const data = await parseProviderResponse(response);
+  return data.response || '';
 }
 
 async function generateOpenAI({ apiKey, prompt }) {
@@ -753,6 +828,7 @@ async function readProfileFromDataDir() {
     })),
     text: combinedText.slice(0, 18000),
     keywords: extractKeywords(combinedText),
+    insights: extractProfileInsights(combinedText),
   };
 }
 
@@ -809,4 +885,34 @@ function extractKeywords(text) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 18)
     .map(([word]) => word);
+}
+
+function extractProfileInsights(text) {
+  const normalized = normalizeText(text);
+  const skillPatterns = [
+    'Qualitätsmanagement', 'Projektmanagement', 'Prozessmanagement', 'Audit', 'VDA', 'ISO',
+    'KAIZEN', 'Lean', 'Six Sigma', 'SAP', 'Excel', 'Power BI', 'Führung', 'Controlling',
+    'Vertrieb', 'Einkauf', 'Produktion', 'Logistik', 'IT', 'Digitalisierung',
+  ];
+  const rolePattern = /\b(?:Qualitätsmanager|Qualitätsmanagementbeauftragter|Betriebswirt|Projektleiter|Teamleiter|Auditor|Controller|Manager|Sachbearbeiter|Leiter|Koordinator)[\wäöüß -]*/gi;
+  const educationPattern = /\b(?:staatl\.?\s*gepr\.?\s*Betriebswirt|Bachelor|Master|Ausbildung|Studium|Zertifikat|Certificate|IHK|Techniker|Auditor)[\wäöüß .-]*/gi;
+  const strengthPatterns = [
+    'strukturiert', 'zuverlässig', 'analytisch', 'kommunikationsstark', 'eigenverantwortlich',
+    'lösungsorientiert', 'teamfähig', 'kundenorientiert', 'praxisnah', 'verantwortungsvoll',
+  ];
+
+  return {
+    skills: uniqueMatches(skillPatterns.filter((skill) => new RegExp(`\\b${escapeRegExp(skill)}\\b`, 'i').test(normalized))).slice(0, 14),
+    roles: uniqueMatches(normalized.match(rolePattern) ?? []).slice(0, 8),
+    education: uniqueMatches(normalized.match(educationPattern) ?? []).slice(0, 8),
+    strengths: uniqueMatches(strengthPatterns.filter((strength) => new RegExp(`\\b${escapeRegExp(strength)}\\b`, 'i').test(normalized))).slice(0, 10),
+  };
+}
+
+function uniqueMatches(values) {
+  return [...new Set(values.map((value) => normalizeText(String(value)).replace(/[.,;:]$/, '')).filter(Boolean))];
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
