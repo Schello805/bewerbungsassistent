@@ -4,8 +4,8 @@ Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bl
 
 ## Funktionen
 
-- Stammdaten lokal speichern
 - Stammdaten zentral in SQLite speichern
+- API-Keys je KI-Anbieter zentral speichern und Anbieter frei wechseln
 - Lebenslauf, Zeugnisse und weitere Unterlagen hochladen
 - mehrere Dateien gleichzeitig hochladen
 - sichtbares Upload-Feedback mit Fortschrittsanimation
@@ -15,9 +15,9 @@ Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bl
 - Anschreiben mit Absenderdaten, Empfängerblock, Betreff und Schlussformel erstellen
 - gewünschte Angaben wie Wunschgehalt, Eintrittstermin oder Referenznummer als Platzhalter erkennen
 - Anschreiben direkt bearbeiten
-- fertige Versionen lokal speichern
 - fertige Versionen zentral in SQLite speichern
-- DOCX herunterladen oder Text kopieren
+- DIN-A4-Vorschau neben dem Editor anzeigen
+- DOCX herunterladen, Text kopieren oder Google Docs öffnen
 - gespeicherte Anschreiben öffnen, weiterbearbeiten und löschen
 
 ## Installation auf Debian 13 oder Ubuntu 24.04

@@ -112,6 +112,7 @@ function ApplicationShell() {
   const [apiKey, setApiKey] = useState('');
   const [apiKeyProviders, setApiKeyProviders] = useState<string[]>([]);
   const [apiKeyStatus, setApiKeyStatus] = useState('');
+  const [isApiKeyEditing, setIsApiKeyEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -119,6 +120,8 @@ function ApplicationShell() {
   const jobDetails = useMemo(() => extractJobDetails(jobInput), [jobInput]);
   const canCreateLetter = jobInput.trim().length > 8 && personalData.name.trim().length > 0;
   const hasApiKey = apiKey.trim().length > 0 || apiKeyProviders.includes(provider);
+  const currentProviderHasStoredKey = apiKeyProviders.includes(provider);
+  const apiKeyDisplayValue = apiKey || (!isApiKeyEditing && currentProviderHasStoredKey ? '••••••••••••' : '');
 
   const loadProfile = useCallback(async () => {
     try {
@@ -225,6 +228,7 @@ function ApplicationShell() {
     setProvider(value);
     setApiKey('');
     setApiKeyStatus('');
+    setIsApiKeyEditing(false);
     void saveSettings({ provider: value });
   }
 
@@ -235,6 +239,7 @@ function ApplicationShell() {
 
   function updateApiKey(value: string) {
     setApiKey(value);
+    setIsApiKeyEditing(true);
     setApiKeyStatus(value.trim().length > 0 ? 'Noch nicht gespeichert.' : '');
   }
 
@@ -245,6 +250,7 @@ function ApplicationShell() {
       await saveSettings({ provider, apiKey });
       setApiKeyProviders((current) => current.includes(provider) ? current : [...current, provider]);
       setApiKey('');
+      setIsApiKeyEditing(false);
       setApiKeyStatus('API-Key gespeichert.');
     } catch {
       setApiKeyStatus('API-Key konnte nicht gespeichert werden.');
@@ -255,6 +261,7 @@ function ApplicationShell() {
     try {
       await saveSettings({ provider, apiKey: '' });
       setApiKey('');
+      setIsApiKeyEditing(false);
       setApiKeyProviders((current) => current.filter((item) => item !== provider));
       setApiKeyStatus('API-Key entfernt.');
     } catch {
@@ -446,6 +453,13 @@ function ApplicationShell() {
 
   async function copyForGoogleDocs() {
     await navigator.clipboard.writeText(draft);
+    setLetterStatus('Text kopiert.');
+  }
+
+  async function openGoogleDocs() {
+    await navigator.clipboard.writeText(draft);
+    window.open('https://docs.new', '_blank', 'noopener,noreferrer');
+    setLetterStatus('Google Docs geöffnet. Der Text ist in der Zwischenablage.');
   }
 
   async function resolveJobInput(input: string) {
@@ -618,6 +632,7 @@ function ApplicationShell() {
             <div className="editor-meta">
               <button type="button" className="button success" onClick={saveFinalLetter} disabled={!draft}><Save size={18} /> Fertig speichern</button>
               <button type="button" className="button primary" onClick={downloadDocx} disabled={!draft}><Download size={18} /> DOCX herunterladen</button>
+              <button type="button" className="button google" onClick={openGoogleDocs} disabled={!draft}><Link2 size={18} /> Google Docs öffnen</button>
               <button type="button" className="button secondary" onClick={copyForGoogleDocs} disabled={!draft}><Link2 size={18} /> Text kopieren</button>
             </div>
             <section className="saved-letters" aria-label="Gespeicherte Anschreiben">
@@ -669,7 +684,9 @@ function ApplicationShell() {
               <label>
                 Anbieter
                 <select value={provider} onChange={(event) => updateProvider(event.target.value)}>
-                  {providerOptions.map((option) => <option key={option}>{option}</option>)}
+                  {providerOptions.map((option) => (
+                    <option key={option} value={option}>{apiKeyProviders.includes(option) ? '✓ ' : ''}{option}</option>
+                  ))}
                 </select>
               </label>
               <label>
@@ -683,23 +700,36 @@ function ApplicationShell() {
               <span><KeyRound size={18} /> API-Key</span>
               <input
                 type="password"
-                placeholder={apiKeyProviders.includes(provider) ? `${provider} API-Key gespeichert` : `${provider} API-Key`}
-                value={apiKey}
+                placeholder={`${provider} API-Key`}
+                value={apiKeyDisplayValue}
+                onFocus={() => setIsApiKeyEditing(true)}
+                onBlur={() => {
+                  if (!apiKey.trim()) setIsApiKeyEditing(false);
+                }}
                 onChange={(event) => updateApiKey(event.target.value)}
                 autoComplete="off"
               />
             </label>
             <div className="api-note-row">
               <p className="field-note">
-                {apiKeyStatus || (apiKeyProviders.includes(provider) ? 'API-Key gespeichert.' : 'API-Key eintragen, um KI zu nutzen.')}
+                {apiKeyStatus || (currentProviderHasStoredKey ? `${provider} API-Key gespeichert.` : `${provider} API-Key eintragen.`)}
               </p>
               {apiKey.trim().length > 0 && (
                 <button type="button" className="text-button" onClick={saveApiKey}>Speichern</button>
               )}
-              {apiKeyProviders.includes(provider) && (
+              {currentProviderHasStoredKey && (
                 <button type="button" className="text-button" onClick={removeApiKey}>Entfernen</button>
               )}
             </div>
+            {apiKeyProviders.length > 0 && (
+              <div className="provider-key-list" aria-label="Gespeicherte API-Keys">
+                {providerOptions.map((option) => (
+                  <span key={option} className={apiKeyProviders.includes(option) ? 'is-stored' : ''}>
+                    {apiKeyProviders.includes(option) ? '●' : '○'} {option}
+                  </span>
+                ))}
+              </div>
+            )}
           </article>
 
           <article className={isUploading ? 'panel upload-panel is-uploading' : 'panel upload-panel'}>
