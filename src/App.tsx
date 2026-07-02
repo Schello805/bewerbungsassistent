@@ -265,9 +265,17 @@ function ApplicationShell() {
   }
 
   async function saveGoogleClientId() {
+    const normalizedClientId = normalizeGoogleClientId(googleClientId);
+
+    if (normalizedClientId && !isValidGoogleClientId(normalizedClientId)) {
+      setGoogleClientIdStatus('Bitte die vollständige Client-ID eintragen: ...apps.googleusercontent.com');
+      return;
+    }
+
     try {
-      await saveSettings({ googleClientId });
-      setGoogleClientIdStatus(googleClientId.trim().length > 0 ? 'Google Client-ID gespeichert.' : 'Google Client-ID entfernt.');
+      setGoogleClientId(normalizedClientId);
+      await saveSettings({ googleClientId: normalizedClientId });
+      setGoogleClientIdStatus(normalizedClientId ? 'Google Client-ID gespeichert.' : 'Google Client-ID entfernt.');
     } catch {
       setGoogleClientIdStatus('Google Client-ID konnte nicht gespeichert werden.');
     }
@@ -548,7 +556,13 @@ function ApplicationShell() {
         return;
       }
 
-      const accessToken = await requestGoogleAccessToken(googleClientId.trim());
+      const normalizedClientId = normalizeGoogleClientId(googleClientId);
+      if (!isValidGoogleClientId(normalizedClientId)) {
+        setLetterStatus('Google Client-ID ist ungültig. Bitte vollständig speichern: ...apps.googleusercontent.com');
+        return;
+      }
+
+      const accessToken = await requestGoogleAccessToken(normalizedClientId);
       const createResponse = await fetch('https://docs.googleapis.com/v1/documents', {
         method: 'POST',
         headers: {
@@ -901,7 +915,7 @@ function ApplicationShell() {
               <TextField label="Google OAuth Client-ID" value={googleClientId} onChange={updateGoogleClientId} />
               <div className="google-client-actions">
                 <p className="field-note">
-                  {googleClientIdStatus || 'Für direktes Erstellen in Google Docs. Ohne Client-ID öffnet die App docs.new und kopiert den Text.'}
+                  {googleClientIdStatus || 'Vollständige Client-ID eintragen, nicht den Clientschlüssel. Ohne Client-ID öffnet die App docs.new und kopiert den Text.'}
                 </p>
                 <button type="button" className="button primary" onClick={saveGoogleClientId}>Speichern</button>
               </div>
@@ -913,7 +927,8 @@ function ApplicationShell() {
                   <li>Öffne <strong>APIs & Dienste → Anmeldedaten</strong> und wähle <strong>Client-ID erstellen</strong>.</li>
                   <li>Als Anwendungstyp <strong>Webanwendung</strong> auswählen.</li>
                   <li>Bei <strong>Autorisierte JavaScript-Quellen</strong> diese Adresse eintragen: <code>{window.location.origin}</code></li>
-                  <li>Client-ID kopieren und oben in das Feld einfügen.</li>
+                  <li>Wenn du die App über Tablet/Handy im Netzwerk nutzt, zusätzlich auch diese Netzwerk-Adresse als JavaScript-Quelle eintragen.</li>
+                  <li>Die vollständige <strong>Client-ID</strong> kopieren, nicht den Clientschlüssel. Sie endet auf <code>.apps.googleusercontent.com</code>.</li>
                 </ol>
                 <a href="https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid" target="_blank" rel="noreferrer">
                   Offizielle Google-Anleitung öffnen <ExternalLink size={14} />
@@ -1169,6 +1184,14 @@ function formatFileSize(bytes: number) {
 
 function providerHasUsableKey(provider: string, apiKeyProviders: string[]) {
   return provider === 'Llama lokal' || apiKeyProviders.includes(provider);
+}
+
+function normalizeGoogleClientId(value: string) {
+  return value.replace(/\s+/g, '').trim();
+}
+
+function isValidGoogleClientId(value: string) {
+  return /^[0-9a-zA-Z_-]+\.apps\.googleusercontent\.com$/.test(value);
 }
 
 async function requestGoogleAccessToken(clientId: string): Promise<string> {
