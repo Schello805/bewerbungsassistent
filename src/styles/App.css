@@ -1340,3 +1340,409 @@ textarea:focus {
   .panel,
   .editor-layout { padding: 18px; }
 }
+
+/* Bootstrap-based compact redesign */
+html {
+  font-size: 14px;
+}
+
+body {
+  background: #f6f7fb;
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(37, 99, 235, 0.08), transparent 24%),
+    radial-gradient(circle at 92% 4%, rgba(20, 184, 166, 0.09), transparent 24%),
+    #f6f7fb;
+}
+
+.app-header {
+  border-bottom: 1px solid #e5e7eb;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.04);
+}
+
+.topbar,
+.app-main,
+.app-footer,
+.legal-page {
+  width: min(1120px, calc(100% - 40px));
+}
+
+.topbar {
+  min-height: 58px;
+}
+
+.brand {
+  gap: 9px;
+  color: #111827;
+  font-size: 0.98rem;
+  font-weight: 750;
+}
+
+.brand img {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  box-shadow: none;
+}
+
+.view-switch {
+  height: 38px;
+  border-color: #dbe3ea;
+  background: #fff;
+  padding: 3px;
+}
+
+.view-switch button {
+  min-height: 30px;
+  padding: 0 0.78rem;
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.view-switch button.active {
+  background: #111827;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.16);
+}
+
+.app-main {
+  padding: 22px 0 56px;
+}
+
+.settings-page {
+  gap: 14px;
+}
+
+.panel,
+.editor-layout,
+.legal-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 26px rgba(15, 23, 42, 0.055);
+  padding: 18px;
+  backdrop-filter: none;
+}
+
+.panel::before,
+.editor-layout::before {
+  display: none;
+}
+
+.panel:hover,
+.editor-layout:hover {
+  transform: none;
+  border-color: #dbe3ea;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.07);
+}
+
+h1 {
+  margin-bottom: 0.9rem;
+  font-size: clamp(1.65rem, 2.4vw, 2.15rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+h2 {
+  margin-bottom: 0.7rem;
+  font-size: 1.08rem;
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+}
+
+h3 {
+  font-size: 1rem;
+}
+
+.eyebrow {
+  margin-bottom: 0.45rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+}
+
+.create-grid,
+.slim-grid {
+  gap: 14px;
+}
+
+.create-panel,
+.analysis-panel {
+  min-height: 300px;
+  background: #fff;
+}
+
+.create-panel h1 {
+  max-width: 520px;
+  font-size: clamp(1.65rem, 2.35vw, 2.1rem);
+  line-height: 1.08;
+}
+
+label {
+  gap: 0.38rem;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+input,
+select,
+textarea {
+  border-color: #dbe3ea;
+  border-radius: 10px;
+  background: #fff;
+  color: #111827;
+  font-size: 0.92rem;
+  box-shadow: none;
+}
+
+input,
+select {
+  min-height: 38px;
+  padding: 0.48rem 0.7rem;
+}
+
+textarea {
+  min-height: 128px;
+  padding: 0.7rem 0.8rem;
+  line-height: 1.5;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.settings-page .master-data-panel {
+  padding: 18px;
+  background: #fff;
+}
+
+.settings-page .master-data-panel .form-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-page .panel h2 {
+  margin: 0 0 0.15rem;
+  font-size: 1.08rem;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+}
+
+.settings-page .master-data-panel h2 {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 760;
+}
+
+.settings-page .compact-header {
+  margin-bottom: 12px;
+}
+
+.settings-page label,
+.compact-form label {
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.settings-page input,
+.settings-page select,
+.settings-page .master-data-panel input {
+  height: 38px;
+  min-height: 38px;
+  border-radius: 10px;
+  padding: 0.48rem 0.68rem;
+  font-size: 0.9rem;
+}
+
+.settings-page .compact-form {
+  gap: 12px;
+}
+
+.ai-panel,
+.integrations-panel,
+.backup-panel {
+  min-height: 230px;
+  background: #fff;
+}
+
+.ai-panel h2 {
+  margin-bottom: 0.75rem;
+}
+
+.provider-picker {
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.provider-button {
+  border-color: #dbe3ea;
+  background: #f8fafc;
+  color: #475569;
+  padding: 0.38rem 0.64rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.provider-button.stored {
+  border-color: rgba(22, 163, 74, 0.24);
+  background: #ecfdf3;
+  color: #16703b;
+}
+
+.provider-button.active,
+.provider-button.stored.active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #111827;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.08);
+}
+
+.api-field {
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.field-note,
+.document-status,
+.document-list small,
+.saved-letters small,
+.saved-letters p,
+.panel p {
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.button,
+.panel-header button,
+.editor-toolbar button,
+.document-list button {
+  min-height: 38px;
+  border-radius: 10px;
+  padding: 0.55rem 0.78rem;
+  font-size: 0.88rem;
+  font-weight: 720;
+}
+
+.primary {
+  background: #2563eb;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.primary:hover {
+  background: #1d4ed8;
+}
+
+.primary::after {
+  display: none;
+}
+
+.secondary,
+.panel-header button,
+.editor-toolbar button {
+  border-color: #dbe3ea;
+  background: #fff;
+  color: #334155;
+}
+
+.success {
+  background: #16a34a;
+  box-shadow: 0 8px 18px rgba(22, 163, 74, 0.16);
+}
+
+.google {
+  background: #0f766e;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.16);
+}
+
+.big-action,
+.compare-action {
+  min-height: 42px;
+  font-size: 0.92rem;
+}
+
+.analysis-summary {
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.analysis-summary span {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+  padding: 0.42rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.backup-actions {
+  gap: 9px;
+}
+
+.oauth-help {
+  border-color: #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.65rem 0.8rem;
+}
+
+.oauth-help summary,
+.oauth-help a,
+.text-button {
+  font-size: 0.84rem;
+  font-weight: 720;
+}
+
+.document-list li {
+  border-color: #e5e7eb;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.editor-layout {
+  gap: 14px;
+}
+
+.editor-preview-grid {
+  gap: 14px;
+}
+
+.draft-editor {
+  min-height: 520px;
+}
+
+@media (max-width: 1180px) {
+  .settings-page .master-data-panel .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 920px) {
+  .settings-page .master-data-panel .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  h1,
+  .create-panel h1 {
+    font-size: 1.55rem;
+  }
+
+  .panel,
+  .editor-layout {
+    padding: 14px;
+  }
+
+  .brand {
+    font-size: 0.94rem;
+  }
+}
