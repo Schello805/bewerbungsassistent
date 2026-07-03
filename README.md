@@ -29,8 +29,18 @@ Lokale Netzwerk-App zum Erstellen, Vergleichen, Bearbeiten und Verwalten von Bew
 
 ## Installation auf Debian 13 oder Ubuntu 24.04
 
+Als `root` oder mit einem Benutzer mit `sudo`-Rechten ausführen:
+
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/Schello805/bewerbungsassistent/main/scripts/install.sh)
+curl -fsSL https://raw.githubusercontent.com/Schello805/bewerbungsassistent/main/scripts/install.sh -o install-bewerbungsassistent.sh
+sudo bash install-bewerbungsassistent.sh
+```
+
+Wenn du bereits als `root` angemeldet bist, funktioniert derselbe Befehl ebenfalls. Alternativ ohne `sudo`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Schello805/bewerbungsassistent/main/scripts/install.sh -o install-bewerbungsassistent.sh
+bash install-bewerbungsassistent.sh
 ```
 
 Das Installationsscript führt die Einrichtung vollständig aus:
@@ -48,7 +58,8 @@ Das Installationsscript führt die Einrichtung vollständig aus:
 ### Optionale Parameter
 
 ```bash
-sudo APP_DIR=/opt/bewerbungsassistent PORT=5173 SERVICE_USER=bewerbungsassistent bash scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/Schello805/bewerbungsassistent/main/scripts/install.sh -o install-bewerbungsassistent.sh
+sudo APP_DIR=/opt/bewerbungsassistent PORT=5173 SERVICE_USER=bewerbungsassistent bash install-bewerbungsassistent.sh
 ```
 
 Weitere optionale Variablen:
