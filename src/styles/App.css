@@ -2754,3 +2754,272 @@ textarea:focus {
     min-height: 34px;
   }
 }
+
+/* Wide workflow layout */
+.topbar,
+.app-main,
+.app-footer,
+.legal-page {
+  width: min(1480px, calc(100% - 48px));
+}
+
+.app-main {
+  padding-top: 18px;
+  padding-bottom: 42px;
+}
+
+.apply-main {
+  display: grid;
+  grid-template-columns: minmax(560px, 1.25fr) minmax(380px, 0.75fr);
+  gap: 16px 18px;
+  align-items: start;
+}
+
+.workflow-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+  grid-column: 1 / -1;
+}
+
+.workflow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #64748b;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.86rem;
+  font-weight: 780;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+  white-space: nowrap;
+}
+
+.workflow-step strong {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #2563eb;
+  font-size: 0.78rem;
+}
+
+.workflow-step.active {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: #eff6ff;
+  color: #172033;
+}
+
+.workflow-step.done {
+  border-color: rgba(22, 163, 74, 0.28);
+  background: #ecfdf5;
+  color: #14532d;
+}
+
+.workflow-step.done strong {
+  background: #16a34a;
+  color: #fff;
+}
+
+.apply-grid {
+  grid-template-columns: minmax(560px, 1.25fr) minmax(380px, 0.75fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.apply-main > .apply-grid {
+  display: contents;
+}
+
+.apply-main .create-panel {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.apply-main .analysis-panel {
+  grid-column: 2;
+  grid-row: 2 / span 2;
+}
+
+.apply-main .editor-section {
+  grid-column: 1;
+  grid-row: 3;
+  padding-top: 0;
+}
+
+.create-panel,
+.analysis-panel {
+  min-height: 0;
+  padding: 22px;
+}
+
+.create-panel {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.create-panel h1 {
+  max-width: none;
+  margin-bottom: 8px;
+  font-size: clamp(1.55rem, 2vw, 2rem);
+}
+
+.create-panel textarea {
+  min-height: 176px;
+  max-height: 300px;
+}
+
+.create-panel label {
+  flex: 0 0 auto;
+}
+
+.create-actions {
+  margin-top: 10px;
+}
+
+.compare-cost-note {
+  margin-top: 2px;
+}
+
+.analysis-panel {
+  gap: 12px;
+  max-height: min(760px, calc(100vh - 150px));
+  overflow-y: auto;
+  position: sticky;
+  top: 76px;
+}
+
+.analysis-panel h2 {
+  margin-bottom: 0.2rem;
+  font-size: clamp(1rem, 1.35vw, 1.22rem);
+}
+
+.analysis-panel .analysis-block {
+  padding-top: 10px;
+}
+
+.match-list {
+  gap: 7px;
+}
+
+.match-list li {
+  padding: 9px 11px;
+}
+
+.section {
+  padding-top: 16px;
+}
+
+.editor-layout {
+  padding: 18px;
+}
+
+.editor-toolbar {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.toolbar-actions {
+  justify-content: flex-end;
+}
+
+.editor-preview-grid {
+  grid-template-columns: minmax(520px, 1fr) minmax(520px, 1fr);
+  --letter-pane-height: 560px;
+}
+
+.draft-editor {
+  height: var(--letter-pane-height);
+  min-height: var(--letter-pane-height);
+}
+
+.letter-preview {
+  padding: 14px;
+}
+
+.preview-page {
+  height: calc(var(--letter-pane-height) - 28px);
+  min-height: calc(var(--letter-pane-height) - 28px);
+  max-height: calc(var(--letter-pane-height) - 28px);
+}
+
+.quality-panel {
+  padding: 12px;
+}
+
+.quality-panel ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.saved-letters,
+.application-history {
+  padding: 16px 0 0;
+}
+
+@media (max-width: 1180px) {
+  .apply-main {
+    display: block;
+  }
+
+  .workflow-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-strip,
+  .apply-main > .apply-grid,
+  .apply-main .editor-section {
+    margin-bottom: 14px;
+  }
+
+  .apply-main > .apply-grid {
+    display: grid;
+  }
+
+  .analysis-panel {
+    position: static;
+    max-height: none;
+  }
+
+  .apply-grid,
+  .editor-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-actions {
+    justify-content: flex-start;
+  }
+
+  .quality-panel ul {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar,
+  .app-main,
+  .app-footer,
+  .legal-page {
+    width: min(100% - 24px, 1480px);
+  }
+
+  .workflow-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .create-panel textarea {
+    min-height: 145px;
+  }
+}
