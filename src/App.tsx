@@ -1329,6 +1329,7 @@ function ApplicationShell() {
                 <summary>Google OAuth Client-ID erstellen</summary>
                 <ol>
                   <li>Öffne die Google Cloud Console und erstelle oder wähle ein Projekt.</li>
+                  <li>Öffne <strong>APIs & Dienste → Bibliothek</strong> und aktiviere die <strong>Google Docs API</strong>.</li>
                   <li>Öffne <strong>APIs & Dienste → OAuth-Zustimmungsbildschirm</strong> und trage App-Name sowie Support-E-Mail ein.</li>
                   <li>Öffne <strong>APIs & Dienste → Anmeldedaten</strong> und wähle <strong>Client-ID erstellen</strong>.</li>
                   <li>Als Anwendungstyp <strong>Webanwendung</strong> auswählen.</li>
@@ -1338,6 +1339,9 @@ function ApplicationShell() {
                 </ol>
                 <a href="https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid" target="_blank" rel="noreferrer">
                   Offizielle Google-Anleitung öffnen <ExternalLink size={14} />
+                </a>
+                <a href="https://console.cloud.google.com/apis/library/docs.googleapis.com" target="_blank" rel="noreferrer">
+                  Google Docs API aktivieren <ExternalLink size={14} />
                 </a>
               </details>
             </div>
@@ -1900,6 +1904,14 @@ function isValidGoogleClientId(value: string) {
 async function readGoogleError(response: Response, fallback: string) {
   const data = await response.json().catch(() => null) as { error?: { message?: string; status?: string } } | null;
   const message = data?.error?.message || data?.error?.status;
+  if (/docs api has not been used|docs.googleapis.com|it is disabled/i.test(message || '')) {
+    const projectMatch = message?.match(/project\s+(\d+)/i);
+    const projectId = projectMatch?.[1];
+    const url = projectId
+      ? `https://console.cloud.google.com/apis/library/docs.googleapis.com?project=${projectId}`
+      : 'https://console.cloud.google.com/apis/library/docs.googleapis.com';
+    return `${fallback}: Die Google Docs API ist in deinem Google-Cloud-Projekt noch nicht aktiviert. Aktiviere sie hier: ${url} — danach ein paar Minuten warten und erneut versuchen.`;
+  }
   return message ? `${fallback}: ${message}` : fallback;
 }
 
