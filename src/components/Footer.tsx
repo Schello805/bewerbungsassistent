@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 const githubUrl = 'https://github.com/Schello805/bewerbungsassistent';
@@ -7,22 +7,55 @@ export function Footer() {
   const [status, setStatus] = useState('Update prüfen');
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [maintenanceVisible, setMaintenanceVisible] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState('Update wird installiert ...');
+  const reconnectStarted = useRef(false);
 
-  useEffect(() => {
-    checkUpdate(false);
+  const waitForRestart = useCallback(() => {
+    if (reconnectStarted.current) return;
+    reconnectStarted.current = true;
+
+    window.setTimeout(() => {
+      const poll = async () => {
+        try {
+          const response = await fetch('/api/health', { cache: 'no-store' });
+          if (response.ok) {
+            setMaintenanceMessage('Dienst ist wieder erreichbar. Seite wird neu geladen ...');
+            window.setTimeout(() => window.location.reload(), 700);
+            return;
+          }
+        } catch {
+          setMaintenanceMessage('Update läuft noch. Ich verbinde automatisch neu ...');
+        }
+        window.setTimeout(poll, 1600);
+      };
+
+      poll();
+    }, 2800);
   }, []);
 
-  async function checkUpdate(showStatus = true) {
+  const checkUpdate = useCallback(async (showStatus = true) => {
     if (showStatus) setStatus('Prüfe Update ...');
     try {
       const response = await fetch('/api/update-status');
-      const data = await response.json() as { updateAvailable?: boolean; behind?: number; error?: string };
+      const data = await response.json() as { updateAvailable?: boolean; behind?: number; updating?: boolean; error?: string };
+      if (data.updating) {
+        setStatus('Update läuft ...');
+        setMaintenanceVisible(true);
+        setMaintenanceMessage('Update läuft bereits. Ich warte, bis der Dienst wieder erreichbar ist ...');
+        waitForRestart();
+        return;
+      }
       setUpdateAvailable(Boolean(data.updateAvailable));
       setStatus(data.updateAvailable ? `Update verfügbar (${data.behind})` : 'Aktuell');
     } catch {
       if (showStatus) setStatus('Updateprüfung nicht möglich');
     }
-  }
+  }, [waitForRestart]);
+
+  useEffect(() => {
+    checkUpdate(false);
+  }, [checkUpdate]);
 
   async function runUpdate() {
     setIsUpdating(true);
@@ -33,7 +66,9 @@ export function Footer() {
       if (!response.ok) throw new Error(data.error || 'Update fehlgeschlagen.');
       setStatus(data.message || 'Update abgeschlossen.');
       if (data.updated) {
-        window.setTimeout(() => window.location.reload(), 4000);
+        setMaintenanceVisible(true);
+        setMaintenanceMessage('Update installiert. Der Dienst startet gerade neu ...');
+        waitForRestart();
       }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Update fehlgeschlagen.');
@@ -43,23 +78,37 @@ export function Footer() {
   }
 
   return (
-    <footer className="app-footer">
-      <div>
-        <strong>Bewerbungsassistent</strong>
-        <p>
-          Open Source von Michael Schellenberger · Rev. {__APP_REVISION__} · v{__APP_VERSION__}
-        </p>
-      </div>
-      <nav aria-label="Rechtliche Links">
-        <button type="button" className={updateAvailable ? 'footer-update has-update' : 'footer-update'} onClick={updateAvailable ? runUpdate : () => checkUpdate(true)} disabled={isUpdating}>
-          <RefreshCw size={15} /> {isUpdating ? 'Update läuft ...' : status}
-        </button>
-        <a href="/datenschutz">Datenschutz</a>
-        <a href={githubUrl} target="_blank" rel="noreferrer" className="github-link">
-          <GithubIcon /> GitHub
-        </a>
-      </nav>
-    </footer>
+    <>
+      <footer className="app-footer">
+        <div>
+          <strong>Bewerbungsassistent</strong>
+          <p>
+            Open Source von Michael Schellenberger · Rev. {__APP_REVISION__} · v{__APP_VERSION__}
+          </p>
+        </div>
+        <nav aria-label="Rechtliche Links">
+          <button type="button" className={updateAvailable ? 'footer-update has-update' : 'footer-update'} onClick={updateAvailable ? runUpdate : () => checkUpdate(true)} disabled={isUpdating}>
+            <RefreshCw size={15} /> {isUpdating ? 'Update läuft ...' : status}
+          </button>
+          <a href="/datenschutz">Datenschutz</a>
+          <a href={githubUrl} target="_blank" rel="noreferrer" className="github-link">
+            <GithubIcon /> GitHub
+          </a>
+        </nav>
+      </footer>
+
+      {maintenanceVisible ? (
+        <div className="update-maintenance-backdrop" role="status" aria-live="polite">
+          <div className="update-maintenance-card">
+            <div className="update-maintenance-spinner" aria-hidden="true" />
+            <p className="eyebrow">Update läuft</p>
+            <h2>Die App wird gerade aktualisiert</h2>
+            <p>{maintenanceMessage}</p>
+            <small>Bitte diese Seite offen lassen. Sie lädt automatisch neu, sobald alles fertig ist.</small>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 

@@ -1773,6 +1773,62 @@ textarea:focus {
   opacity: 0.72;
 }
 
+.update-maintenance-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(59, 130, 246, 0.24), transparent 30%),
+    radial-gradient(circle at 75% 15%, rgba(34, 197, 94, 0.22), transparent 28%),
+    rgba(248, 250, 252, 0.88);
+  backdrop-filter: blur(14px);
+}
+
+.update-maintenance-card {
+  width: min(440px, 100%);
+  padding: 30px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 26px 80px rgba(15, 23, 42, 0.18);
+  text-align: center;
+}
+
+.update-maintenance-card h2 {
+  margin: 6px 0 10px;
+  font-size: clamp(1.35rem, 4vw, 1.9rem);
+  letter-spacing: -0.04em;
+}
+
+.update-maintenance-card p:not(.eyebrow) {
+  margin: 0 auto 10px;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.update-maintenance-card small {
+  display: block;
+  color: #64748b;
+}
+
+.update-maintenance-spinner {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  border: 5px solid #dbeafe;
+  border-top-color: #2563eb;
+  border-right-color: #22c55e;
+  animation: update-spin 0.9s linear infinite;
+}
+
+@keyframes update-spin {
+  to { transform: rotate(360deg); }
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
