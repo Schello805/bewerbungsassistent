@@ -75,6 +75,7 @@ type JobDetails = {
   salutation: string;
   company: string;
   title: string;
+  source: string;
   requestedInfo: RequestedInfo[];
 };
 
@@ -1419,6 +1420,7 @@ function extractJobDetails(input: string): JobDetails {
   const title = extractTitle(text, url);
   const contact = extractContact(text);
   const recipient = [companyFromText || companyFromUrl, contact].filter(Boolean).join('\n') || 'Empfänger bitte prüfen';
+  const source = extractJobSource(text, url);
 
   return {
     recipient,
@@ -1428,6 +1430,7 @@ function extractJobDetails(input: string): JobDetails {
     salutation: contact ? `Sehr geehrte${contact.toLowerCase().includes('herr') ? 'r' : ''} ${contact.replace(/^(frau|herr)\s+/i, '')},` : 'Sehr geehrte Damen und Herren,',
     company: companyFromText || companyFromUrl,
     title,
+    source,
     requestedInfo: extractRequestedInfo(text),
   };
 }
@@ -1436,6 +1439,7 @@ function createDraft({ personalData, jobDetails, profile }: { personalData: Pers
   const date = new Intl.DateTimeFormat('de-DE').format(new Date());
   const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
+  const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
   const requestedParagraphs = createRequestedInfoParagraphs(jobDetails.requestedInfo);
   const profileStrengths = formatProfileStrengths(profile);
   const roleFocus = profileStrengths || 'Qualitätsmanagement, Prozessverbesserung und strukturierter Zusammenarbeit';
@@ -1461,11 +1465,16 @@ function createDraft({ personalData, jobDetails, profile }: { personalData: Pers
     '',
     jobDetails.salutation,
     '',
-    `Ihre Ausschreibung${titleReference}${companyReference} spricht mich an, weil sie fachliche Verantwortung mit klarer Umsetzungsstärke verbindet. Genau diese Kombination aus Qualität, Struktur und pragmatischer Verbesserung prägt auch meinen beruflichen Ansatz.`,
-    `Als ${personalData.qualification || 'erfahrener Bewerber'} bringe ich eine analytische und zugleich praxisnahe Arbeitsweise mit. Besonders relevant sind für mich ${roleFocus}. Ich arbeite mich schnell in neue Anforderungen ein, erkenne Zusammenhänge und übersetze diese in nachvollziehbare, umsetzbare Schritte.`,
-    'In meinen bisherigen Stationen war es mir wichtig, Prozesse nicht nur zu verwalten, sondern messbar besser zu machen: klare Standards, verlässliche Kommunikation, saubere Dokumentation und ein Blick für die Schnittstellen zwischen Fachbereichen. Dadurch kann ich Teams entlasten, Entscheidungen vorbereiten und Qualität im Tagesgeschäft stabil verankern.',
-    `Für Ihr Unternehmen sehe ich meinen Mehrwert vor allem darin, Verantwortung zu übernehmen, Themen konsequent nachzuhalten und Verbesserungen so umzusetzen, dass sie im Alltag funktionieren. Gerne bringe ich meine Erfahrung ein, um bestehende Abläufe zu stärken und neue Anforderungen strukturiert voranzubringen.`,
+    `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie operative Verantwortung mit klarer Prozess- und Qualitätsorientierung verbindet. Genau an dieser Schnittstelle arbeite ich besonders gern: Strukturen schaffen, Abläufe verständlich machen und Verbesserungen so umsetzen, dass sie im Tagesgeschäft tragen.`,
+    '',
+    `Als ${personalData.qualification || 'erfahrener Bewerber'} verbinde ich betriebswirtschaftliches Denken mit einem sehr praktischen Blick auf Qualität, Standards und Zusammenarbeit. ${roleFocus} bringe ich nicht als reine Stichworte mit, sondern als Arbeitsfelder, in denen saubere Analyse, Verbindlichkeit und pragmatische Umsetzung entscheidend sind.`,
+    '',
+    'In meinen bisherigen Aufgaben war mir wichtig, Prozesse nicht nur zu verwalten, sondern wirksam weiterzuentwickeln. Dazu gehören klare Kommunikation, nachvollziehbare Dokumentation, ein gutes Verständnis für Schnittstellen und die Fähigkeit, Anforderungen in konkrete nächste Schritte zu übersetzen.',
+    '',
+    `Für Ihr Unternehmen sehe ich meinen Mehrwert darin, Verantwortung zu übernehmen, Themen konsequent nachzuhalten und Teams im Alltag spürbar zu entlasten. Gerne bringe ich meine Erfahrung ein, um bestehende Abläufe zu stabilisieren, Verbesserungspotenziale sichtbar zu machen und neue Anforderungen strukturiert voranzubringen.`,
+    '',
     ...requestedParagraphs,
+    requestedParagraphs.length > 0 ? '' : undefined,
     'Ich freue mich darauf, Ihnen in einem persönlichen Gespräch zu zeigen, wie ich Ihr Team konkret unterstützen kann.',
     '',
     'Mit freundlichen Grüßen',
@@ -1621,7 +1630,7 @@ function cleanGeneratedLetter(text: string) {
     /^strukturierte profilanalyse\s*:/i,
   ];
 
-  return text
+  const cleaned = text
     .replace(/^```[a-z]*\s*/i, '')
     .replace(/```$/i, '')
     .split('\n')
@@ -1630,6 +1639,31 @@ function cleanGeneratedLetter(text: string) {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  return normalizeLetterParagraphs(cleaned);
+}
+
+function normalizeLetterParagraphs(text: string) {
+  const lines = text.split('\n').map((line) => line.trimEnd());
+  const salutationIndex = lines.findIndex((line) => /^(sehr geehrte|guten tag)/i.test(line.trim()));
+  const closingIndex = lines.findIndex((line, index) => index > salutationIndex && /^mit freundlichen grüßen$/i.test(line.trim()));
+  if (salutationIndex === -1 || closingIndex === -1 || closingIndex <= salutationIndex) {
+    return text;
+  }
+
+  const head = lines.slice(0, salutationIndex + 1);
+  const body = lines.slice(salutationIndex + 1, closingIndex).map((line) => line.trim()).filter(Boolean);
+  const tail = lines.slice(closingIndex);
+  if (body.length <= 1) {
+    return text;
+  }
+
+  return [
+    ...head,
+    '',
+    body.join('\n\n'),
+    '',
+    ...tail,
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 async function readApiError(response: Response): Promise<{ error?: string }> {
@@ -1692,6 +1726,20 @@ function companyFromUrlString(url: string) {
   }
 }
 
+function extractJobSource(text: string, url: string) {
+  const haystack = `${url} ${text}`.toLowerCase();
+  const sources: Array<[string, RegExp]> = [
+    ['Xing', /\bxing\b|xing\.com/],
+    ['LinkedIn', /\blinkedin\b|linkedin\.com/],
+    ['StepStone', /\bstepstone\b|stepstone\./],
+    ['Indeed', /\bindeed\b|indeed\./],
+    ['Bundesagentur für Arbeit', /arbeitsagentur\.de|jobboerse\.arbeitsagentur/],
+    ['Join', /\bjoin\b|join\.com/],
+    ['HeyJobs', /\bheyjobs\b|heyjobs\./],
+  ];
+  return sources.find(([, pattern]) => pattern.test(haystack))?.[0] ?? '';
+}
+
 function extractCompany(text: string) {
   return text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&. -]+\s(?:GmbH|AG|SE|KG|OHG|e\.V\.|Group|Holding))/)?.[1]?.trim() ?? '';
 }
@@ -1735,7 +1783,7 @@ function cleanTitle(value: string) {
   if (roleMatch && roleMatch.index && roleMatch.index > 0 && roleMatch.index < 35) {
     cleaned = cleaned.slice(roleMatch.index).trim();
   }
-  return cleaned.slice(0, 90);
+  return cleaned ? `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`.slice(0, 90) : '';
 }
 
 function titleCase(value: string) {

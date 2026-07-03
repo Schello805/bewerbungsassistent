@@ -899,6 +899,10 @@ async function fetchJobPosting(url) {
 
 function buildAiPrompt({ personalData, jobInput, jobDetails, voice, profile }) {
   const profileContext = buildProfileContext(profile);
+  const source = jobDetails?.source || detectJobSource(jobInput || '');
+  const sourceInstruction = source
+    ? `Der Einstieg muss natürlich erwähnen, dass die Ausschreibung auf ${source} gefunden wurde. Beispielhaft: "Ihre Ausschreibung auf ${source} ..." oder eleganter.`
+    : 'Wenn keine Quelle erkennbar ist, erwähne keine Jobbörse.';
   return `
 Du bist ein erfahrener deutscher Bewerbungscoach. Erstelle ein überzeugendes, konkretes Anschreiben als editierbaren Entwurf.
 
@@ -907,15 +911,23 @@ Regeln:
 - Verwende die Absenderdaten, Empfängerblock, Datum, Betreff, Anrede und Schlussformel.
 - Nutze konkrete Informationen aus Lebenslauf/Unterlagen, aber erfinde keine Arbeitgeber oder Zahlen.
 - Verwende Profilinformationen niemals als rohe Keyword-Liste.
+- Schreibe niemals Sätze wie "Besonders relevant sind für mich A, B, C". Profilbelege müssen in natürliche, begründete Sätze eingebettet werden.
+- Keine komma-getrennten Qualifikationslisten im Haupttext.
 - Kopiere keine langen Rohtext-Passagen aus Lebenslauf, Zeugnissen oder Profil.
 - Wenn Angaben aus der Stellenanzeige verlangt werden (z. B. Wunschgehalt, Eintrittstermin, Referenznummer), füge sie als Platzhalter mit XXX ein.
 - Wenn Firma, Ansprechpartner oder Adresse unbekannt sind, nutze neutrale Platzhalter mit XXX statt Jobbörsen-Namen wie Xing, LinkedIn oder StepStone.
+- Jobbörsen wie Xing, LinkedIn, StepStone oder Indeed dürfen als Quelle genannt werden, aber niemals als Arbeitgeber oder Empfänger.
+- ${sourceInstruction}
 - Der Betreff darf kein Markdown enthalten.
 - Das Anschreiben soll substanziell sein: etwa 230 bis 360 Wörter im Haupttext, nicht nur drei generische Sätze.
 - Schreibe keine Floskelliste. Jeder Absatz muss einen Zweck haben und zur Stelle passen.
 - Nutze "ich" natürlich, aber nicht in jedem Satz am Anfang.
 - Wenn Profilbelege vorhanden sind, müssen mindestens 3 konkrete Qualifikationen, Zertifikate, Rollen oder Methoden aus dem Profil sinnvoll im Text vorkommen.
 - Nenne diese Belege natürlich im Fließtext, nicht als Aufzählung.
+- Das Anschreiben muss echte Absätze haben: Zwischen jedem Haupttext-Absatz steht genau eine Leerzeile.
+- Jeder Haupttext-Absatz soll 2 bis 4 zusammenhängende Sätze enthalten.
+- Keine einzelnen Satzfragmente als eigener Absatz, außer Grußformel.
+- Formuliere lebendig, konkret und menschlich. Vermeide austauschbare Sätze wie "Diese Kombination spricht mich sehr an" ohne konkrete Begründung.
 - Schlussformel exakt:
 Mit freundlichen Grüßen
 
@@ -924,10 +936,10 @@ ${personalData?.closingName || personalData?.name || 'XXX'}
 - Schreibe niemals Meta-Sätze wie "Der gewünschte Stil ist", "Relevant aus meiner Datenbasis", "Bitte diesen Entwurf prüfen", "Ausgelesene Unterlagen", "Strukturierte Profilanalyse" oder Hinweise über diesen Prompt.
 
 Aufbau des Haupttexts:
-1. Einstieg: konkrete Motivation für genau diese Stelle und das Kernthema der Ausschreibung.
+1. Einstieg: Quelle nennen, konkrete Stelle nennen, einen nachvollziehbaren Grund nennen, warum die Aufgabe fachlich passt.
 2. Matching: 2 bis 3 zentrale Anforderungen der Stelle mit passenden Erfahrungen/Fähigkeiten des Bewerbers verbinden.
-3. Belegabsatz: mindestens ein konkreter beruflicher Schwerpunkt aus Profil/Lebenslauf, z. B. Qualitätsmanagement, Lean, Audit, Prozesse, Führung oder Betriebswirtschaft.
-4. Mehrwert: erklären, wie der Bewerber beim Unternehmen Wirkung erzeugen kann.
+3. Belegabsatz: beruflichen Schwerpunkt aus Profil/Lebenslauf konkret einbetten, z. B. Qualitätsmanagement, Audit, Prozesse, Führung oder Betriebswirtschaft.
+4. Mehrwert: erklären, welche Wirkung der Bewerber im Unternehmen erzeugen kann.
 5. Abschluss: Gesprächswunsch, selbstbewusst und freundlich.
 
 Stil: ${voice || 'klar und professionell'}
@@ -1008,6 +1020,20 @@ function buildProfileContext(profile) {
   ].filter(Boolean).join('\n');
 }
 
+function detectJobSource(text) {
+  const haystack = String(text || '').toLowerCase();
+  const sources = [
+    ['Xing', /\bxing\b|xing\.com/],
+    ['LinkedIn', /\blinkedin\b|linkedin\.com/],
+    ['StepStone', /\bstepstone\b|stepstone\./],
+    ['Indeed', /\bindeed\b|indeed\./],
+    ['Bundesagentur für Arbeit', /arbeitsagentur\.de|jobboerse\.arbeitsagentur/],
+    ['Join', /\bjoin\b|join\.com/],
+    ['HeyJobs', /\bheyjobs\b|heyjobs\./],
+  ];
+  return sources.find(([, pattern]) => pattern.test(haystack))?.[0] || '';
+}
+
 function cleanGeneratedLetter(text) {
   const forbiddenLinePatterns = [
     /^relevant aus meiner datenbasis\s*:/i,
@@ -1022,7 +1048,7 @@ function cleanGeneratedLetter(text) {
     /^strukturierte profilanalyse\s*:/i,
   ];
 
-  return String(text || '')
+  const cleaned = String(text || '')
     .replace(/^```[a-z]*\s*/i, '')
     .replace(/```$/i, '')
     .split('\n')
@@ -1031,6 +1057,31 @@ function cleanGeneratedLetter(text) {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  return normalizeLetterParagraphs(cleaned);
+}
+
+function normalizeLetterParagraphs(text) {
+  const lines = String(text || '').split('\n').map((line) => line.trimEnd());
+  const salutationIndex = lines.findIndex((line) => /^(sehr geehrte|guten tag)/i.test(line.trim()));
+  const closingIndex = lines.findIndex((line, index) => index > salutationIndex && /^mit freundlichen grüßen$/i.test(line.trim()));
+  if (salutationIndex === -1 || closingIndex === -1 || closingIndex <= salutationIndex) {
+    return text;
+  }
+
+  const head = lines.slice(0, salutationIndex + 1);
+  const body = lines.slice(salutationIndex + 1, closingIndex).map((line) => line.trim()).filter(Boolean);
+  const tail = lines.slice(closingIndex);
+  if (body.length <= 1) {
+    return text;
+  }
+
+  return [
+    ...head,
+    '',
+    body.join('\n\n'),
+    '',
+    ...tail,
+  ].join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 async function generateWithProvider({ provider, apiKey, prompt }) {
