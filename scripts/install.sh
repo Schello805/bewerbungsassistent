@@ -145,11 +145,24 @@ start_service() {
 
 health_check() {
   log "Prüfe App-Erreichbarkeit auf http://127.0.0.1:${PORT}/api/health ..."
-  if curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null; then
-    success "Healthcheck erfolgreich."
-  else
-    warn "Healthcheck konnte die App noch nicht erreichen. Der Service läuft eventuell noch hoch."
-  fi
+  for attempt in {1..30}; do
+    if curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null; then
+      success "Healthcheck erfolgreich."
+      return
+    fi
+    if ! systemctl is-active --quiet "${APP_NAME}.service"; then
+      warn "Service ist während des Healthchecks gestoppt. Zeige letzte Logs."
+      journalctl -u "${APP_NAME}.service" -n 60 --no-pager || true
+      fail "Healthcheck fehlgeschlagen, weil der Service nicht läuft."
+    fi
+    printf '.'
+    sleep 1
+    if [[ "${attempt}" -eq 30 ]]; then
+      printf '\n'
+    fi
+  done
+  journalctl -u "${APP_NAME}.service" -n 60 --no-pager || true
+  fail "Healthcheck fehlgeschlagen. Die App ist nach 30 Sekunden nicht erreichbar."
 }
 
 print_summary() {
