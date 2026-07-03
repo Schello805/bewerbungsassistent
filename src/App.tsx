@@ -1484,21 +1484,39 @@ function createDraft({ personalData, jobDetails, profile }: { personalData: Pers
 
 function createProfileParagraph(profile: ProfileData, personalData: PersonalData) {
   const values = getCleanProfileEvidence(profile);
-  const qualityTerms = values.filter((value) => /qualität|qmb|vda|iso|audit/i.test(value)).slice(0, 3);
+  const qualityTerms = values.filter((value) => /qualität|qmb|vda|iso|audit/i.test(value)).slice(0, 5);
   const processTerms = values.filter((value) => /prozess|lean|kaizen|kvp|fmea|8d|sap|excel|power bi/i.test(value)).slice(0, 2);
   const qualification = personalData.qualification || values.find((value) => /betriebswirt|bachelor|master|techniker/i.test(value)) || 'erfahrener Bewerber';
 
   if (qualityTerms.length > 0 || processTerms.length > 0) {
-    const qualityText = qualityTerms.length > 0
-      ? `Meine Erfahrung im ${joinNaturalList(qualityTerms)} hilft mir, Anforderungen sauber zu strukturieren und Qualität nicht nur zu dokumentieren, sondern im Tagesgeschäft wirksam zu verankern`
-      : 'Mein Blick für Qualität, Standards und nachvollziehbare Abläufe hilft mir, Anforderungen sauber zu strukturieren';
+    const qualityText = createQualityExperienceSentence(qualityTerms);
     const processText = processTerms.length > 0
       ? ` Ergänzend bringe ich Praxis in ${joinNaturalList(processTerms)} ein, um Verbesserungen greifbar und umsetzbar zu machen.`
       : ' Verbesserungen verstehe ich dabei immer als praktische Arbeit an klaren Abläufen, verlässlicher Kommunikation und nachvollziehbaren Entscheidungen.';
-    return `Als ${qualification} verbinde ich betriebswirtschaftliches Denken mit einem sehr praktischen Blick auf Abläufe, Standards und Zusammenarbeit. ${qualityText}.${processText}`;
+    return `Als ${qualification} verbinde ich betriebswirtschaftliches Denken mit einem sehr praktischen Blick auf Abläufe, Standards und Zusammenarbeit. ${qualityText}${processText}`;
   }
 
   return `Als ${qualification} verbinde ich analytisches Denken mit einer praxisnahen Arbeitsweise. Wichtig ist mir, Anforderungen verständlich zu machen, Prioritäten klar zu setzen und Verbesserungen so umzusetzen, dass sie im Alltag tatsächlich funktionieren.`;
+}
+
+function createQualityExperienceSentence(terms: string[]) {
+  const normalizedTerms = uniqueValues(terms);
+  const hasQualityManagement = normalizedTerms.some((value) => /qualitätsmanagement/i.test(value));
+  const hasQmb = normalizedTerms.some((value) => /qmb|qualitätsmanagementbeauftrag/i.test(value));
+  const auditTerms = normalizedTerms.filter((value) => /vda|iso|audit/i.test(value)).slice(0, 2);
+
+  if (hasQualityManagement || hasQmb || auditTerms.length > 0) {
+    const parts = [
+      hasQualityManagement ? 'im Qualitätsmanagement' : '',
+      hasQmb ? 'als Qualitätsmanagementbeauftragter' : '',
+      auditTerms.length > 0 ? `mit Bezug zu ${joinNaturalList(auditTerms)}` : '',
+    ].filter(Boolean);
+    return `Meine Erfahrung ${joinNaturalList(parts)} hilft mir, Anforderungen sauber zu strukturieren und Qualität nicht nur zu dokumentieren, sondern im Tagesgeschäft wirksam zu verankern.`;
+  }
+
+  return terms.length > 0
+    ? `Meine Erfahrung mit ${joinNaturalList(terms.slice(0, 3))} hilft mir, Anforderungen sauber zu strukturieren und Qualität im Tagesgeschäft wirksam zu verankern.`
+      : 'Mein Blick für Qualität, Standards und nachvollziehbare Abläufe hilft mir, Anforderungen sauber zu strukturieren.';
 }
 
 function getCleanProfileEvidence(profile: ProfileData) {
