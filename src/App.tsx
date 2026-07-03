@@ -1613,16 +1613,25 @@ function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvide
   const normalizedDraft = draft.toLowerCase();
   const words = draft.trim().split(/\s+/).filter(Boolean);
   const evidenceHits = profileEvidence.filter((item) => normalizedDraft.includes(item.toLowerCase())).length;
-  const hasPlaceholders = /\bXXX\b|\[[^\]]+\]/.test(draft);
-  const hasSubject = jobDetails.subject && normalizedDraft.includes(jobDetails.subject.toLowerCase().replace(/^bewerbung\s+als\s+/, '').slice(0, 18));
+  const placeholderMatches = draft.match(/\bXXX\b|\[[^\]]+\]/g) ?? [];
+  const hasPlaceholders = placeholderMatches.length > 0;
+  const hasRecipientPlaceholder = /XXX Unternehmen|XXX Ansprechpartner|Empfänger bitte prüfen/i.test(draft);
+  const subjectLine = draft.split('\n').find((line) => /^bewerbung\s+als\s+\S+/i.test(line.trim())) ?? '';
+  const titleFromSubject = subjectLine.replace(/^bewerbung\s+als\s+/i, '').trim();
+  const titleForCheck = jobDetails.title || titleFromSubject;
+  const hasSubject = /^bewerbung\s+als\s+.{3,}/i.test(subjectLine.trim());
+  const hasJobReference = Boolean(titleForCheck && normalizedDraft.includes(titleForCheck.toLowerCase().slice(0, 12)));
+  const placeholderHint = hasRecipientPlaceholder
+    ? 'Empfängerblock enthält noch XXX. Bitte Unternehmen, Ansprechpartner und Adresse ergänzen.'
+    : `Noch ${placeholderMatches.length} Platzhalter offen. Bitte XXX oder eckige Platzhalter ersetzen.`;
 
   return [
     { label: 'Länge ausreichend', ok: words.length >= 220, hint: `Aktuell ${words.length} Wörter. Ziel: ca. 220–360 Wörter.` },
-    { label: 'Betreff vorhanden', ok: normalizedDraft.includes('bewerbung') && Boolean(hasSubject || jobDetails.subject === 'Bewerbung'), hint: 'Betreff sollte mit „Bewerbung als …“ klar zur Stelle passen.' },
+    { label: 'Betreff vorhanden', ok: hasSubject, hint: 'Betreff sollte als eigene Zeile mit „Bewerbung als …“ beginnen.' },
     { label: 'Anrede vorhanden', ok: /sehr geehrte|guten tag/i.test(draft), hint: 'Eine passende Anrede fehlt oder wurde nicht erkannt.' },
     { label: 'Mindestens 3 Profilbelege', ok: evidenceHits >= 3, hint: `Aktuell erkannt: ${evidenceHits}. Mehr konkrete Qualifikationen aus dem Profil einbauen.` },
-    { label: 'Stellenbezug vorhanden', ok: Boolean(jobDetails.title && normalizedDraft.includes(jobDetails.title.toLowerCase().slice(0, 12))), hint: 'Die konkrete Position sollte im Einstieg oder Matching-Absatz vorkommen.' },
-    { label: 'Keine offenen Platzhalter', ok: !hasPlaceholders, hint: 'Bitte XXX oder eckige Platzhalter vor dem Versand ersetzen.' },
+    { label: 'Stellenbezug vorhanden', ok: hasJobReference, hint: 'Die konkrete Position sollte im Einstieg oder Matching-Absatz vorkommen.' },
+    { label: 'Keine offenen Platzhalter', ok: !hasPlaceholders, hint: placeholderHint },
     { label: 'Schlussformel vorhanden', ok: normalizedDraft.includes('mit freundlichen grüßen'), hint: 'Die Schlussformel „Mit freundlichen Grüßen“ fehlt.' },
   ];
 }
