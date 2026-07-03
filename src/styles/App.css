@@ -1943,6 +1943,26 @@ textarea:focus {
   margin-bottom: 12px;
 }
 
+.personal-data-feedback {
+  margin-top: 4px;
+}
+
+.personal-data-feedback.is-dirty {
+  color: #b45309;
+  font-weight: 800;
+}
+
+.personal-data-feedback.is-saved {
+  color: #15803d;
+  font-weight: 800;
+}
+
+.save-master-data {
+  min-height: 38px;
+  padding-inline: 14px;
+  white-space: nowrap;
+}
+
 .settings-page label,
 .compact-form label {
   color: #334155;

@@ -132,6 +132,9 @@ function ApplicationShell() {
   const [applications, setApplications] = useState<ApplicationRecord[]>([]);
   const [profile, setProfile] = useState<ProfileData>({ documents: [], text: '', keywords: [] });
   const [personalData, setPersonalData] = useState<PersonalData>(defaultPersonalData);
+  const [personalDataForm, setPersonalDataForm] = useState<PersonalData>(defaultPersonalData);
+  const [personalDataStatus, setPersonalDataStatus] = useState('');
+  const [isPersonalDataDirty, setIsPersonalDataDirty] = useState(false);
   const [jobInput, setJobInput] = useState('');
   const [draft, setDraft] = useState('');
   const [documentStatus, setDocumentStatus] = useState('Dokumente werden geladen ...');
@@ -240,7 +243,10 @@ function ApplicationShell() {
         profileEvidence?: string[];
       };
       if (data.personalData) {
-        setPersonalData({ ...defaultPersonalData, ...data.personalData });
+        const nextPersonalData = { ...defaultPersonalData, ...data.personalData };
+        setPersonalData(nextPersonalData);
+        setPersonalDataForm(nextPersonalData);
+        setIsPersonalDataDirty(false);
       }
       if (data.provider && providerOptions.includes(data.provider)) {
         setProvider(data.provider);
@@ -312,11 +318,20 @@ function ApplicationShell() {
   }
 
   function updatePersonalData(field: keyof PersonalData, value: string) {
-    setPersonalData((current) => {
-      const next = { ...current, [field]: value };
-      void saveSettings({ personalData: next });
-      return next;
-    });
+    setPersonalDataForm((current) => ({ ...current, [field]: value }));
+    setIsPersonalDataDirty(true);
+    setPersonalDataStatus('Noch nicht gespeichert.');
+  }
+
+  async function savePersonalData() {
+    try {
+      await saveSettings({ personalData: personalDataForm });
+      setPersonalData(personalDataForm);
+      setIsPersonalDataDirty(false);
+      setPersonalDataStatus('Stammdaten gespeichert.');
+    } catch {
+      setPersonalDataStatus('Stammdaten konnten nicht gespeichert werden.');
+    }
   }
 
   function updateProvider(value: string) {
@@ -1186,17 +1201,25 @@ function ApplicationShell() {
         <section className="settings-page">
           <article id="stammdaten" className="panel master-data-panel">
             <div className="panel-header compact-header">
-              <h2>Stammdaten</h2>
+              <div>
+                <h2>Stammdaten</h2>
+                <p className={`document-status personal-data-feedback ${isPersonalDataDirty ? 'is-dirty' : personalDataStatus ? 'is-saved' : ''}`}>
+                  {personalDataStatus || 'Änderungen werden erst nach dem Speichern übernommen.'}
+                </p>
+              </div>
+              <button type="button" className="button primary save-master-data" onClick={savePersonalData} disabled={!isPersonalDataDirty}>
+                <Save size={16} /> Speichern
+              </button>
             </div>
             <div className="form-grid compact-form">
-              <TextField label="Name" value={personalData.name} onChange={(value) => updatePersonalData('name', value)} />
-              <TextField label="Qualifikation" value={personalData.qualification} onChange={(value) => updatePersonalData('qualification', value)} />
-              <TextField label="E-Mail" value={personalData.email} onChange={(value) => updatePersonalData('email', value)} />
-              <TextField label="Telefon" value={personalData.phone} onChange={(value) => updatePersonalData('phone', value)} />
-              <TextField label="Straße" value={personalData.street} onChange={(value) => updatePersonalData('street', value)} />
-              <TextField label="PLZ Ort" value={personalData.city} onChange={(value) => updatePersonalData('city', value)} />
-              <TextField label="Website" value={personalData.website} onChange={(value) => updatePersonalData('website', value)} />
-              <TextField label="Absendeort" value={personalData.location} onChange={(value) => updatePersonalData('location', value)} />
+              <TextField label="Name" value={personalDataForm.name} onChange={(value) => updatePersonalData('name', value)} />
+              <TextField label="Qualifikation" value={personalDataForm.qualification} onChange={(value) => updatePersonalData('qualification', value)} />
+              <TextField label="E-Mail" value={personalDataForm.email} onChange={(value) => updatePersonalData('email', value)} />
+              <TextField label="Telefon" value={personalDataForm.phone} onChange={(value) => updatePersonalData('phone', value)} />
+              <TextField label="Straße" value={personalDataForm.street} onChange={(value) => updatePersonalData('street', value)} />
+              <TextField label="PLZ Ort" value={personalDataForm.city} onChange={(value) => updatePersonalData('city', value)} />
+              <TextField label="Website" value={personalDataForm.website} onChange={(value) => updatePersonalData('website', value)} />
+              <TextField label="Absendeort" value={personalDataForm.location} onChange={(value) => updatePersonalData('location', value)} />
             </div>
           </article>
 
