@@ -2621,3 +2621,64 @@ textarea:focus {
     gap: 10px;
   }
 }
+
+/* Final footer polish */
+.app-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 22px;
+  padding: 22px 0 30px;
+}
+
+.app-footer > div:first-child {
+  min-width: 0;
+}
+
+.app-footer > div:first-child p {
+  margin: 3px 0 0;
+  line-height: 1.35;
+}
+
+.app-footer nav {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.footer-update {
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.footer-update-log {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.footer-update-log span {
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 0.24rem 0.48rem;
+}
+
+@media (max-width: 720px) {
+  .app-footer {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .app-footer nav {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .footer-update,
+  .github-link,
+  .app-footer nav a {
+    min-height: 34px;
+  }
+}
