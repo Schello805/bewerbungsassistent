@@ -141,6 +141,8 @@ function ApplicationShell() {
   const [isComparing, setIsComparing] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [backupStatus, setBackupStatus] = useState('');
+  const [backupStatusType, setBackupStatusType] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [isBackupWorking, setIsBackupWorking] = useState(false);
   const [activeLetterId, setActiveLetterId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<AiCandidate[]>([]);
   const [activeCandidateIndex, setActiveCandidateIndex] = useState(0);
@@ -827,7 +829,9 @@ function ApplicationShell() {
   }
 
   async function downloadBackup() {
-    setBackupStatus('Backup wird erstellt ...');
+    setIsBackupWorking(true);
+    setBackupStatusType('loading');
+    setBackupStatus('Backup wird erstellt ... Datenbank, Unterlagen, Einstellungen und API-Keys werden gesammelt.');
     try {
       const response = await fetch('/api/backup');
       if (!response.ok) {
@@ -835,15 +839,20 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'Backup konnte nicht erstellt werden.');
       }
       const blob = await response.blob();
+      const size = formatFileSize(blob.size);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.download = `bewerbungsassistent-backup-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
-      setBackupStatus('Backup heruntergeladen.');
+      setBackupStatusType('success');
+      setBackupStatus(`Backup erstellt und heruntergeladen (${size}).`);
     } catch (error) {
+      setBackupStatusType('error');
       setBackupStatus(error instanceof Error ? error.message : 'Backup konnte nicht erstellt werden.');
+    } finally {
+      setIsBackupWorking(false);
     }
   }
 
@@ -851,7 +860,9 @@ function ApplicationShell() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setBackupStatus('Backup wird eingespielt ...');
+    setIsBackupWorking(true);
+    setBackupStatusType('loading');
+    setBackupStatus(`Backup „${file.name}“ wird geprüft und eingespielt ...`);
     try {
       const backup = JSON.parse(await file.text()) as unknown;
       const response = await fetch('/api/backup/restore', {
@@ -863,11 +874,14 @@ function ApplicationShell() {
         const data = await response.json() as { error?: string };
         throw new Error(data.error ?? 'Backup konnte nicht eingespielt werden.');
       }
-      await Promise.all([loadSettings(), loadDocuments(), loadLetters()]);
-      setBackupStatus('Backup wiederhergestellt.');
+      await Promise.all([loadSettings(), loadDocuments(), loadLetters(), loadApplications()]);
+      setBackupStatusType('success');
+      setBackupStatus(`Backup „${file.name}“ wurde erfolgreich wiederhergestellt.`);
     } catch (error) {
+      setBackupStatusType('error');
       setBackupStatus(error instanceof Error ? error.message : 'Backup konnte nicht eingespielt werden.');
     } finally {
+      setIsBackupWorking(false);
       event.target.value = '';
     }
   }
@@ -1300,12 +1314,20 @@ function ApplicationShell() {
             <div className="panel-header">
               <div>
                 <h2>Backup</h2>
-                <p className="document-status">{backupStatus || 'Stammdaten, Unterlagen, API-Keys und Anschreiben sichern.'}</p>
+                <p className={`document-status backup-feedback backup-${backupStatusType}`}>
+                  {isBackupWorking && <RefreshCw size={14} />}
+                  {backupStatus || 'Stammdaten, Unterlagen, API-Keys und Anschreiben sichern.'}
+                </p>
               </div>
             </div>
             <div className="backup-actions">
-              <button type="button" className="button primary" onClick={downloadBackup}><Download size={18} /> Backup herunterladen</button>
-              <button type="button" className="button secondary" onClick={() => backupInputRef.current?.click()}><FileUp size={18} /> Backup einspielen</button>
+              <button type="button" className="button primary" onClick={downloadBackup} disabled={isBackupWorking}>
+                {isBackupWorking ? <RefreshCw size={18} /> : <Download size={18} />}
+                {isBackupWorking ? 'Bitte warten ...' : 'Backup herunterladen'}
+              </button>
+              <button type="button" className="button secondary" onClick={() => backupInputRef.current?.click()} disabled={isBackupWorking}>
+                <FileUp size={18} /> Backup einspielen
+              </button>
               <input ref={backupInputRef} type="file" accept="application/json,.json" onChange={restoreBackup} className="visually-hidden" />
             </div>
           </article>

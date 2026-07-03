@@ -1013,6 +1013,51 @@ textarea:focus {
   width: 100%;
 }
 
+.backup-feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.backup-feedback svg {
+  flex: 0 0 auto;
+}
+
+.backup-loading {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.backup-loading svg {
+  animation: spin 0.9s linear infinite;
+}
+
+.backup-success {
+  border-color: #bbf7d0;
+  background: #ecfdf5;
+  color: #15803d;
+  font-weight: 800;
+}
+
+.backup-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-weight: 800;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .upload-button {
   min-width: 178px;
 }
