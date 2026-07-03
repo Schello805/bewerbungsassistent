@@ -118,6 +118,8 @@ http://SERVER-IP:5173
 
 Es wird die Client-ID benötigt, nicht der Clientschlüssel.
 
+Zusätzlich muss im selben Google-Cloud-Projekt unter `APIs & Dienste → Bibliothek` die `Google Docs API` aktiviert sein. Nach der Aktivierung kann es einige Minuten dauern, bis Google die Änderung übernimmt.
+
 ## Entwicklung
 
 ```bash
