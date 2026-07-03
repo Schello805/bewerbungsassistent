@@ -57,6 +57,8 @@ type ProfileData = {
     stations: string[];
     skills: string[];
     certificates: string[];
+    experience?: string[];
+    responsibilities?: string[];
     industries: string[];
     leadership: string[];
     quality: string[];
@@ -185,10 +187,15 @@ function ApplicationShell() {
   const [isGoogleClientIdEditing, setIsGoogleClientIdEditing] = useState(false);
   const [profileEvidenceText, setProfileEvidenceText] = useState('');
   const [profileEvidenceStatus, setProfileEvidenceStatus] = useState('');
+  const [promptNotes, setPromptNotes] = useState('');
+  const [promptNotesStatus, setPromptNotesStatus] = useState('');
   const [profileAutoFillStatus, setProfileAutoFillStatus] = useState('');
   const [costEstimate, setCostEstimate] = useState('');
   const [recipientDraft, setRecipientDraft] = useState<RecipientDraft>({ company: '', contact: '', address: '' });
   const [pendingExportAction, setPendingExportAction] = useState<PendingExportAction>(null);
+  const [applicationSearch, setApplicationSearch] = useState('');
+  const [applicationStatusFilter, setApplicationStatusFilter] = useState<ApplicationStatus | 'Alle'>('Alle');
+  const [showDueOnly, setShowDueOnly] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -208,6 +215,7 @@ function ApplicationShell() {
   const cvSuggestions = useMemo(() => createCvSuggestions(jobInput, matchItems, profileEvidence), [jobInput, matchItems, profileEvidence]);
   const qualityChecks = useMemo(() => createQualityChecks(draft, jobDetails, profileEvidence), [draft, jobDetails, profileEvidence]);
   const passedQualityChecks = qualityChecks.filter((check) => check.ok).length;
+  const filteredApplications = useMemo(() => filterApplications(applications, applicationSearch, applicationStatusFilter, showDueOnly), [applications, applicationSearch, applicationStatusFilter, showDueOnly]);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -267,6 +275,7 @@ function ApplicationShell() {
         googleClientId?: string | null;
         profileEvidence?: string[];
         apiKeyStorageMode?: ApiKeyStorageMode | null;
+        promptNotes?: string | null;
       };
       if (data.personalData) {
         const nextPersonalData = { ...defaultPersonalData, ...data.personalData };
@@ -287,6 +296,9 @@ function ApplicationShell() {
       }
       if (Array.isArray(data.profileEvidence)) {
         setProfileEvidenceText(data.profileEvidence.join('\n'));
+      }
+      if (typeof data.promptNotes === 'string') {
+        setPromptNotes(data.promptNotes);
       }
       if (data.apiKeyStorageMode === 'session' || data.apiKeyStorageMode === 'server') {
         setApiKeyStorageMode(data.apiKeyStorageMode);
@@ -338,7 +350,7 @@ function ApplicationShell() {
     });
   }, [profile, profileEvidenceText]);
 
-  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string; profileEvidence?: string[]; apiKeyStorageMode?: ApiKeyStorageMode }) {
+  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string; profileEvidence?: string[]; apiKeyStorageMode?: ApiKeyStorageMode; promptNotes?: string }) {
     await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -420,6 +432,15 @@ function ApplicationShell() {
       setProfileAutoFillStatus('');
     } catch {
       setProfileEvidenceStatus('Profil-Ergänzungen konnten nicht gespeichert werden.');
+    }
+  }
+
+  async function savePromptNotes() {
+    try {
+      await saveSettings({ promptNotes });
+      setPromptNotesStatus('Prompt-Zusatz gespeichert.');
+    } catch {
+      setPromptNotesStatus('Prompt-Zusatz konnte nicht gespeichert werden.');
     }
   }
 
@@ -531,6 +552,7 @@ function ApplicationShell() {
           provider,
           apiKey: apiKey.trim() || undefined,
           voice,
+          promptNotes,
           personalData,
           jobInput: resolvedJobInput,
           jobDetails: resolvedJobDetails,
@@ -572,6 +594,7 @@ function ApplicationShell() {
           provider,
           apiKey: apiKey.trim() || undefined,
           voice,
+          promptNotes,
           personalData,
           jobInput: resolvedJobInput,
           jobDetails: resolvedJobDetails,
@@ -632,6 +655,7 @@ function ApplicationShell() {
           apiKey: apiKey.trim() || undefined,
           mode,
           voice,
+          promptNotes,
           personalData,
           jobDetails,
           text: draft,
@@ -1218,11 +1242,23 @@ function ApplicationShell() {
                 <h3>Bewerbungs-Historie</h3>
                 <p>Status manuell aktualisieren. Jeder Statuswechsel erhält automatisch einen Zeitstempel.</p>
               </div>
+              <div className="application-filter-bar">
+                <input value={applicationSearch} onChange={(event) => setApplicationSearch(event.target.value)} placeholder="Firma, Stelle oder Notiz suchen ..." />
+                <select value={applicationStatusFilter} onChange={(event) => setApplicationStatusFilter(event.target.value as ApplicationStatus | 'Alle')}>
+                  <option>Alle</option>
+                  {applicationStatuses.map((status) => <option key={status}>{status}</option>)}
+                </select>
+                <button type="button" className={showDueOnly ? 'filter-toggle active' : 'filter-toggle'} onClick={() => setShowDueOnly((value) => !value)}>
+                  Offene Wiedervorlagen
+                </button>
+              </div>
               {applications.length === 0 ? (
                 <p>Noch keine Bewerbung gespeichert.</p>
+              ) : filteredApplications.length === 0 ? (
+                <p>Keine Bewerbung passt zum aktuellen Filter.</p>
               ) : (
                 <ul>
-                  {applications.map((application) => (
+                  {filteredApplications.map((application) => (
                     <li key={application.id}>
                       <span>
                         {application.title}
@@ -1369,6 +1405,22 @@ function ApplicationShell() {
                   {option}
                 </button>
               ))}
+            </div>
+            <label className="prompt-notes-field">
+              Prompt-Zusatz
+              <textarea
+                value={promptNotes}
+                onChange={(event) => {
+                  setPromptNotes(event.target.value);
+                  setPromptNotesStatus('Noch nicht gespeichert.');
+                }}
+                placeholder="z. B. Einstieg stärker auf die Quelle beziehen, weniger Floskeln, mehr konkrete QM-Beispiele verwenden ..."
+              />
+              <span className="field-note">Diese Zusatzanweisung ergänzt den sicheren Grundprompt. Regeln gegen erfundene Fakten bleiben aktiv.</span>
+            </label>
+            <div className="api-note-row">
+              <p className="field-note">{promptNotesStatus || 'Optional: eigene Schreibregeln für Anschreiben speichern.'}</p>
+              <button type="button" className="text-button" onClick={savePromptNotes}>Prompt speichern</button>
             </div>
             {providerNeedsApiKey ? (
               <>
@@ -1604,6 +1656,8 @@ function ProfileStructureSummary({ profile }: { profile: ProfileData }) {
     ['Stationen', structured?.stations ?? []],
     ['Skills', structured?.skills ?? []],
     ['Zertifikate', structured?.certificates ?? []],
+    ['Berufserfahrung', structured?.experience ?? []],
+    ['Aufgaben', structured?.responsibilities ?? []],
     ['Branchen', structured?.industries ?? []],
     ['Führung', structured?.leadership ?? []],
     ['QM / Audit', structured?.quality ?? []],
@@ -1902,6 +1956,20 @@ function getBestCandidateIndex(candidates: AiCandidate[]) {
   return bestIndex;
 }
 
+function filterApplications(applications: ApplicationRecord[], search: string, status: ApplicationStatus | 'Alle', dueOnly: boolean) {
+  const query = search.trim().toLowerCase();
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return applications.filter((application) => {
+    const matchesStatus = status === 'Alle' || application.status === status;
+    const searchable = [application.title, application.company, application.notes, application.jobUrl].join(' ').toLowerCase();
+    const matchesSearch = !query || searchable.includes(query);
+    const dueDate = application.followUpAt ? new Date(application.followUpAt) : null;
+    const matchesDue = !dueOnly || Boolean(dueDate && dueDate <= today && application.status !== 'Absage');
+    return matchesStatus && matchesSearch && matchesDue;
+  });
+}
+
 function estimateAiCost(provider: string, inputText: string, outputText: string, requests = 1) {
   if (provider === 'Llama lokal') return 'Lokale KI: keine API-Kosten.';
   const inputTokens = estimateTokens(inputText);
@@ -2053,16 +2121,32 @@ function extractJobSource(text: string, url: string) {
 }
 
 function extractCompany(text: string) {
-  return text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&. -]+\s(?:GmbH|AG|SE|KG|OHG|e\.V\.|Group|Holding))/)?.[1]?.trim() ?? '';
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  const labelMatch = text.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([^\n]{3,90})/i)?.[1];
+  if (labelMatch) return cleanRecipientValue(labelMatch);
+  const legalMatch = text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
+  if (legalMatch) return cleanRecipientValue(legalMatch);
+  const aboutIndex = lines.findIndex((line) => /über uns|unternehmen|wer wir sind/i.test(line));
+  if (aboutIndex >= 0 && lines[aboutIndex + 1] && !/stellen|job|bewerbung|kontakt/i.test(lines[aboutIndex + 1])) {
+    return cleanRecipientValue(lines[aboutIndex + 1]);
+  }
+  return '';
 }
 
 function extractContact(text: string) {
-  return text.match(/\b(Frau|Herr)\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)?/)?.[0] ?? '';
+  return text.match(/(?:Ansprechpartner(?:in)?|Kontakt|Recruiter(?:in)?)\s*[:-]\s*((?:Frau|Herr)?\s*[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2})/i)?.[1]?.trim()
+    || text.match(/\b(Frau|Herr)\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2}/)?.[0]
+    || '';
 }
 
 function extractAddress(text: string) {
-  const address = text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß. -]+\s+\d+[a-zA-Z]?,?\s*\n?\s*\d{5}\s+[A-ZÄÖÜ][\wÄÖÜäöüß -]+)/)?.[0];
-  return address?.replace(/\s+/g, ' ').trim() ?? '';
+  const labelMatch = text.match(/(?:Adresse|Anschrift|Standort)\s*[:-]\s*([^\n]+(?:\n[^\n]+){0,2})/i)?.[1];
+  const address = labelMatch || text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß. -]+\s+\d+[a-zA-Z]?,?\s*\n?\s*\d{5}\s+[A-ZÄÖÜ][\wÄÖÜäöüß -]+)/)?.[0];
+  return address?.split('\n').map((line) => line.trim()).filter(Boolean).join('\n') ?? '';
+}
+
+function cleanRecipientValue(value: string) {
+  return value.replace(/\s+\|\s+.*$/, '').replace(/\s+-\s+.*$/, '').replace(/\s+/g, ' ').trim();
 }
 
 function extractTitle(text: string, url: string) {

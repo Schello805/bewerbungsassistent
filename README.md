@@ -46,7 +46,13 @@ bash install-bewerbungsassistent.sh
 Wenn der Server bereits `curl`, `git`, `gnupg`, `build-essential` und Node.js hat und `apt-get update` bei `0% [Working]` hängen bleibt, kann der APT-Schritt übersprungen werden:
 
 ```bash
-SKIP_APT=1 bash install-bewerbungsassistent.sh
+bash install-bewerbungsassistent.sh --no-apt
+```
+
+Wenn eine Installation teilweise vorhanden ist oder repariert werden soll:
+
+```bash
+bash install-bewerbungsassistent.sh --repair
 ```
 
 Das Installationsscript führt die Einrichtung vollständig aus:
@@ -60,6 +66,8 @@ Das Installationsscript führt die Einrichtung vollständig aus:
 - systemd-Service einrichten und starten
 - Healthcheck ausführen
 - lokale URL und Netzwerk-URL ausgeben
+
+Der Installer legt außerdem automatische tägliche Backups unter `data/backups/` an. Standardmäßig werden die letzten 14 Auto-Backups behalten. Über `AUTO_BACKUP=0` kann das deaktiviert werden; über `AUTO_BACKUP_KEEP=30` kann die Anzahl geändert werden.
 
 ### Optionale Parameter
 

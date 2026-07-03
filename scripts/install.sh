@@ -8,12 +8,52 @@ SERVICE_USER="${SERVICE_USER:-bewerbungsassistent}"
 PORT="${PORT:-5173}"
 NODE_MAJOR="${NODE_MAJOR:-22}"
 SKIP_APT="${SKIP_APT:-auto}"
+REPAIR_MODE=false
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 
 log() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
 success() { printf '\033[1;32m[OK]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[FEHLER]\033[0m %s\n' "$*" >&2; exit 1; }
+
+usage() {
+  cat <<USAGE
+Bewerbungsassistent Installer
+
+Nutzung:
+  bash install-bewerbungsassistent.sh [--no-apt] [--repair]
+
+Optionen:
+  --no-apt   Überspringt apt-get update/install. Nützlich, wenn APT hängt und Pakete bereits installiert sind.
+  --repair   Repariert eine bestehende Installation: Git safe.directory, Rechte, npm ci, Build, Service neu schreiben/starten.
+  -h, --help Zeigt diese Hilfe.
+
+Umgebungsvariablen:
+  APP_DIR=/opt/bewerbungsassistent PORT=5173 SERVICE_USER=bewerbungsassistent NODE_MAJOR=22
+USAGE
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --no-apt)
+        SKIP_APT=1
+        ;;
+      --repair)
+        REPAIR_MODE=true
+        SKIP_APT=1
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "Unbekannte Option: $1"
+        ;;
+    esac
+    shift
+  done
+}
 
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
@@ -210,6 +250,10 @@ print_summary() {
 
 main() {
   log "Starte Installation von ${APP_NAME}."
+  parse_args "$@"
+  if [[ "${REPAIR_MODE}" == true ]]; then
+    warn "Reparaturmodus aktiv: APT wird übersprungen, bestehende Installation wird neu aufgebaut."
+  fi
   require_root
   detect_os
   install_base_packages

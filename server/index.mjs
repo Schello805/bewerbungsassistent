@@ -18,6 +18,7 @@ const rootDir = path.resolve(__dirname, '..');
 const dataDir = path.join(rootDir, 'datenbasis');
 const lettersDir = path.join(rootDir, 'anschreiben');
 const storageDir = path.join(rootDir, 'data');
+const backupsDir = path.join(storageDir, 'backups');
 const databasePath = path.join(storageDir, 'app.db');
 const secretPath = path.join(storageDir, 'secret.key');
 const port = Number(process.env.PORT || 5173);
@@ -30,6 +31,7 @@ const updateLogs = [];
 await fs.mkdir(dataDir, { recursive: true });
 await fs.mkdir(lettersDir, { recursive: true });
 await fs.mkdir(storageDir, { recursive: true });
+await fs.mkdir(backupsDir, { recursive: true });
 const encryptionKey = await loadEncryptionKey();
 
 const db = new Database(databasePath);
@@ -141,6 +143,7 @@ app.get('/api/settings', (_request, response, next) => {
       voice: getSetting('voice', null),
       googleClientId: getSetting('googleClientId', null),
       profileEvidence: getSetting('profileEvidence', []),
+      promptNotes: getSetting('promptNotes', ''),
       apiKeyStorageMode: getSetting('apiKeyStorageMode', 'server'),
       apiKeyProviders: Object.entries(apiKeys)
         .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
@@ -192,6 +195,9 @@ app.put('/api/settings', (request, response, next) => {
     }
     if ('apiKeyStorageMode' in request.body) {
       setSetting('apiKeyStorageMode', request.body.apiKeyStorageMode === 'session' ? 'session' : 'server');
+    }
+    if ('promptNotes' in request.body) {
+      setSetting('promptNotes', String(request.body.promptNotes || '').trim().slice(0, 3000));
     }
     if ('profileEvidence' in request.body) {
       const profileEvidence = Array.isArray(request.body.profileEvidence)
@@ -508,6 +514,7 @@ app.post('/api/generate-letter', async (request, response, next) => {
       jobInput: request.body.jobInput,
       jobDetails: request.body.jobDetails,
       voice: request.body.voice,
+      promptNotes: request.body.promptNotes,
       profile: await readProfileFromDataDir(),
     });
 
@@ -565,6 +572,7 @@ app.post(['/api/compare-letter', '/compare-letter'], async (request, response, n
       jobInput: request.body.jobInput,
       jobDetails: request.body.jobDetails,
       voice: request.body.voice,
+      promptNotes: request.body.promptNotes,
       profile,
     });
 
@@ -618,6 +626,15 @@ app.listen(port, host, () => {
   console.log(`Datenbank: ${databasePath}`);
   console.log(`Gespeicherte Anschreiben: SQLite Tabelle letters`);
 });
+
+await runAutomaticBackup().catch((error) => {
+  console.warn(`Automatisches Backup übersprungen: ${error instanceof Error ? error.message : 'unbekannter Fehler'}`);
+});
+setInterval(() => {
+  void runAutomaticBackup().catch((error) => {
+    console.warn(`Automatisches Backup fehlgeschlagen: ${error instanceof Error ? error.message : 'unbekannter Fehler'}`);
+  });
+}, 60 * 60 * 1000);
 
 function sanitizeFileName(fileName) {
   return path.basename(fileName).replaceAll(/[^a-zA-Z0-9äöüÄÖÜß._ -]/g, '_');
@@ -806,6 +823,33 @@ async function createBackup() {
   };
 }
 
+async function runAutomaticBackup() {
+  if (process.env.AUTO_BACKUP === '0' || process.env.AUTO_BACKUP === 'false') return;
+  await fs.mkdir(backupsDir, { recursive: true });
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filePath = path.join(backupsDir, `bewerbungsassistent-auto-${stamp}.json`);
+  try {
+    await fs.access(filePath);
+    return;
+  } catch {
+    // No backup for today yet.
+  }
+  const backup = await createBackup();
+  await fs.writeFile(filePath, JSON.stringify(backup, null, 2), { mode: 0o600 });
+  await pruneAutomaticBackups();
+}
+
+async function pruneAutomaticBackups() {
+  const keep = Number(process.env.AUTO_BACKUP_KEEP || 14);
+  const entries = await fs.readdir(backupsDir, { withFileTypes: true });
+  const backupFiles = entries
+    .filter((entry) => entry.isFile() && /^bewerbungsassistent-auto-\d{4}-\d{2}-\d{2}\.json$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .reverse();
+  await Promise.all(backupFiles.slice(keep).map((fileName) => fs.unlink(path.join(backupsDir, fileName)).catch(() => {})));
+}
+
 async function restoreBackup(backup) {
   if (!backup || backup.app !== 'bewerbungsassistent' || !Array.isArray(backup.documents) || !Array.isArray(backup.letters)) {
     throw new Error('Ungültige Backup-Datei.');
@@ -980,9 +1024,10 @@ async function fetchJobPosting(url) {
   };
 }
 
-function buildAiPrompt({ personalData, jobInput, jobDetails, voice, profile }) {
+function buildAiPrompt({ personalData, jobInput, jobDetails, voice, promptNotes, profile }) {
   const profileContext = buildProfileContext(profile);
   const templateInstruction = getTemplateInstruction(voice);
+  const customPromptNotes = String(promptNotes || getSetting('promptNotes', '') || '').trim();
   const source = jobDetails?.source || detectJobSource(jobInput || '');
   const sourceInstruction = source
     ? `Der Einstieg muss natürlich erwähnen, dass die Ausschreibung auf ${source} gefunden wurde. Beispielhaft: "Ihre Ausschreibung auf ${source} ..." oder eleganter.`
@@ -1028,6 +1073,7 @@ Aufbau des Haupttexts:
 
 Stil/Vorlage: ${voice || 'klar und professionell'}
 ${templateInstruction}
+${customPromptNotes ? `\nZusätzliche Nutzer-Anweisung, sofern sie nicht den Regeln widerspricht:\n${customPromptNotes}` : ''}
 
 Absenderdaten:
 ${JSON.stringify(personalData ?? {}, null, 2)}
@@ -1069,6 +1115,7 @@ function buildRewritePrompt({ text, mode, voice, personalData, jobDetails }) {
     shorten: 'Kürze den Text deutlich um etwa 20 bis 30 Prozent. Erhalte alle wichtigen Fakten, Platzhalter und Kontaktdaten.',
   };
 
+  const customPromptNotes = String(getSetting('promptNotes', '') || '').trim();
   return `
 Du bist ein deutscher Bewerbungsassistent. Überarbeite das vorhandene Anschreiben.
 
@@ -1084,6 +1131,7 @@ Regeln:
 - Kein Markdown im Betreff.
 - Nutze Deutsch.
 - Zielstil: ${voice || 'klar und professionell'}.
+${customPromptNotes ? `- Zusätzliche Nutzer-Anweisung beachten, sofern sie den Regeln nicht widerspricht: ${customPromptNotes}` : ''}
 
 Absenderdaten:
 ${JSON.stringify(personalData ?? {}, null, 2)}
@@ -1113,7 +1161,7 @@ function buildProfileContext(profile) {
 
   return [
     `Verbindliche Profilbelege für das Anschreiben: ${evidence.slice(0, 18).join(', ') || 'keine eindeutig erkannt'}`,
-    `Strukturierte Profilanalyse: Stationen=${(structured.stations ?? []).slice(0, 8).join(', ') || '-'}; Skills=${(structured.skills ?? []).slice(0, 10).join(', ') || '-'}; Zertifikate=${(structured.certificates ?? []).slice(0, 10).join(', ') || '-'}; Branchen=${(structured.industries ?? []).slice(0, 8).join(', ') || '-'}; Führung=${(structured.leadership ?? []).slice(0, 8).join(', ') || '-'}; QM/Audit=${(structured.quality ?? []).slice(0, 10).join(', ') || '-'}; Tools=${(structured.tools ?? []).slice(0, 8).join(', ') || '-'}`,
+    `Strukturierte Profilanalyse: Stationen=${(structured.stations ?? []).slice(0, 8).join(', ') || '-'}; Skills=${(structured.skills ?? []).slice(0, 10).join(', ') || '-'}; Zertifikate=${(structured.certificates ?? []).slice(0, 10).join(', ') || '-'}; Berufserfahrung=${(structured.experience ?? []).slice(0, 8).join(', ') || '-'}; Aufgaben=${(structured.responsibilities ?? []).slice(0, 10).join(', ') || '-'}; Branchen=${(structured.industries ?? []).slice(0, 8).join(', ') || '-'}; Führung=${(structured.leadership ?? []).slice(0, 8).join(', ') || '-'}; QM/Audit=${(structured.quality ?? []).slice(0, 10).join(', ') || '-'}; Tools=${(structured.tools ?? []).slice(0, 8).join(', ') || '-'}`,
     `Kompetenzen: ${(insights.skills ?? []).slice(0, 10).join(', ') || 'keine eindeutig erkannt'}`,
     `Rollen/Erfahrung: ${(insights.roles ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
     `Ausbildung/Zertifikate: ${(insights.education ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
@@ -1432,11 +1480,22 @@ function extractStructuredProfile(text, documents = []) {
   const leadership = matchKnownTerms(normalized, ['Führung', 'Teamführung', 'Leitung', 'Projektleitung', 'Verantwortung', 'Koordination', 'Head', 'Manager']).slice(0, 10);
   const quality = matchKnownTerms(normalized, ['Qualitätsmanagement', 'Qualitätssicherung', 'QMB', 'VDA 6.3', 'ISO 9001', 'IATF 16949', 'Audit', 'Auditor', '8D', 'FMEA', 'APQP', 'PPAP']).slice(0, 14);
   const tools = matchKnownTerms(normalized, ['SAP', 'Excel', 'Power BI', 'MS Office', 'ERP', 'CAQ', 'Ollama', 'Google Docs']).slice(0, 10);
+  const experience = uniqueMatches([
+    ...(normalized.match(/\b\d{1,2}\s*(?:Jahre|Jahren)\s+(?:Berufserfahrung|Erfahrung|Praxis)\b/gi) ?? []),
+    ...(normalized.match(/\b(?:seit|von)\s+\d{4}\b[^.]{0,80}/gi) ?? []),
+    ...(normalized.match(/\b(?:mehrjährige|langjährige)\s+(?:Berufserfahrung|Erfahrung|Praxis)\b/gi) ?? []),
+  ]).slice(0, 10);
+  const responsibilities = uniqueMatches([
+    ...matchKnownTerms(normalized, ['Prozessoptimierung', 'Dokumentation', 'Auditplanung', 'Reklamationsbearbeitung', 'Lieferantenmanagement', 'Kennzahlen', 'KPI', 'Reporting', 'Standardisierung', 'Schulung', 'Schnittstellenkommunikation']),
+    ...(normalized.match(/\b(?:verantwortlich für|zuständig für|durchführung von|erstellung von|koordination von)\s+[^.]{8,90}/gi) ?? []),
+  ]).slice(0, 12);
 
   return {
     stations,
     skills: insights.skills ?? [],
     certificates: uniqueMatches([...(insights.education ?? []), ...quality.filter((item) => /vda|iso|iatf|audit|qmb|zertifikat/i.test(item))]).slice(0, 12),
+    experience,
+    responsibilities,
     industries,
     leadership,
     quality,
