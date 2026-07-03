@@ -1370,6 +1370,12 @@ textarea:focus {
   line-height: 1.35;
 }
 
+.prompt-notes-field textarea {
+  min-height: 104px;
+  max-height: 220px;
+  line-height: 1.4;
+}
+
 .profile-structure-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1423,6 +1429,39 @@ textarea:focus {
   grid-template-columns: minmax(0, 1.35fr) minmax(160px, 0.65fr);
   gap: 10px;
   margin-top: 8px;
+}
+
+.application-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 0.28fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.application-filter-bar input,
+.application-filter-bar select {
+  min-height: 38px;
+  border: 1px solid #dbe3ea;
+  border-radius: 10px;
+  padding: 0.5rem 0.68rem;
+  font-size: 0.88rem;
+}
+
+.filter-toggle {
+  min-height: 38px;
+  border: 1px solid #dbe3ea;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  padding: 0.48rem 0.72rem;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.filter-toggle.active {
+  border-color: #bbf7d0;
+  background: #ecfdf5;
+  color: #166534;
 }
 
 .application-meta-grid label,
@@ -2335,6 +2374,10 @@ textarea:focus {
   .candidate-card-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .application-filter-bar {
+    grid-template-columns: 1fr;
   }
 
   .candidate-nav {
