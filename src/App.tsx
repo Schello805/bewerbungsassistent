@@ -26,7 +26,10 @@ type ApplicationRecord = {
   title: string;
   company: string;
   jobInput: string;
+  jobUrl?: string;
   letterId?: string | null;
+  notes?: string;
+  followUpAt?: string;
   status: ApplicationStatus;
   statusUpdatedAt: string;
   updatedAt: string;
@@ -83,6 +86,9 @@ type AiCandidate = {
   text: string;
   ok: boolean;
   error?: string;
+  score?: number;
+  scoreReasons?: string[];
+  costLabel?: string;
 };
 
 const rewriteLabels: Record<RewriteMode, string> = {
@@ -161,6 +167,7 @@ function ApplicationShell() {
   const currentProviderHasStoredKey = apiKeyProviders.includes(provider);
   const apiKeyDisplayValue = apiKey || (!isApiKeyEditing && currentProviderHasStoredKey ? '••••••••••••' : '');
   const activeCandidate = candidates[Math.min(activeCandidateIndex, Math.max(candidates.length - 1, 0))];
+  const bestCandidateIndex = getBestCandidateIndex(candidates);
   const profileEvidence = getProfileEvidence(profile);
   const matchItems = useMemo(() => createMatchItems(jobInput, profileEvidence), [jobInput, profileEvidence]);
   const cvSuggestions = useMemo(() => createCvSuggestions(jobInput, matchItems, profileEvidence), [jobInput, matchItems, profileEvidence]);
@@ -485,16 +492,26 @@ function ApplicationShell() {
       const cleanedCandidates = (data.candidates ?? []).map((candidate) => ({
         ...candidate,
         text: cleanGeneratedLetter(candidate.text),
-      }));
+      })).map((candidate) => {
+        if (!candidate.ok || !candidate.text) return candidate;
+        const evaluation = evaluateCandidate(candidate.text, resolvedJobDetails, profileEvidence);
+        return {
+          ...candidate,
+          score: evaluation.score,
+          scoreReasons: evaluation.reasons,
+          costLabel: estimateAiCost(candidate.provider, `${resolvedJobInput}\n${profileEvidence.join('\n')}`, candidate.text),
+        };
+      });
       setCandidates(cleanedCandidates);
-      setActiveCandidateIndex(0);
-      const firstGood = cleanedCandidates.find((candidate) => candidate.ok && candidate.text);
-      if (firstGood) {
-        setDraft(firstGood.text);
+      const bestIndex = getBestCandidateIndex(cleanedCandidates);
+      setActiveCandidateIndex(bestIndex >= 0 ? bestIndex : 0);
+      const bestGood = bestIndex >= 0 ? cleanedCandidates[bestIndex] : cleanedCandidates.find((candidate) => candidate.ok && candidate.text);
+      if (bestGood) {
+        setDraft(bestGood.text);
         setActiveLetterId(null);
-        setCostEstimate(estimateAiCost(firstGood.provider, `${resolvedJobInput}\n${profileEvidence.join('\n')}`, firstGood.text, cleanedCandidates.length));
+        setCostEstimate(estimateAiCost(bestGood.provider, `${resolvedJobInput}\n${profileEvidence.join('\n')}`, bestGood.text, cleanedCandidates.length));
       }
-      setLetterStatus(firstGood ? 'KI-Vergleich fertig. Du kannst eine Version übernehmen.' : 'Keine KI-Version konnte erstellt werden.');
+      setLetterStatus(bestGood ? 'KI-Vergleich fertig. Beste Version wurde markiert und übernommen.' : 'Keine KI-Version konnte erstellt werden.');
       window.setTimeout(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     } catch (error) {
       setLetterStatus(error instanceof Error ? error.message : 'KI-Vergleich fehlgeschlagen.');
@@ -576,6 +593,7 @@ function ApplicationShell() {
         title: jobDetails.subject || 'Bewerbung',
         company: jobDetails.company,
         jobInput,
+        jobUrl: extractUrl(jobInput),
         letterId,
         status: 'Entwurf',
       }),
@@ -594,6 +612,25 @@ function ApplicationShell() {
     if (!response.ok) {
       const data = await readApiError(response);
       setLetterStatus(data.error || 'Status konnte nicht gespeichert werden.');
+      return;
+    }
+    await loadApplications();
+  }
+
+  async function updateApplicationMeta(application: ApplicationRecord, changes: Partial<Pick<ApplicationRecord, 'notes' | 'followUpAt' | 'jobUrl'>>) {
+    const next = { ...application, ...changes };
+    const response = await fetch(`/api/applications/${encodeURIComponent(application.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        notes: next.notes || '',
+        followUpAt: next.followUpAt || '',
+        jobUrl: next.jobUrl || '',
+      }),
+    });
+    if (!response.ok) {
+      const data = await readApiError(response);
+      setLetterStatus(data.error || 'Bewerbung konnte nicht gespeichert werden.');
       return;
     }
     await loadApplications();
@@ -927,7 +964,10 @@ function ApplicationShell() {
                 {qualityChecks.map((check) => (
                   <li key={check.label} className={check.ok ? 'check-ok' : 'check-missing'}>
                     {check.ok ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
-                    <span>{check.label}</span>
+                    <span>
+                      <strong>{check.label}</strong>
+                      {!check.ok && <small>{check.hint}</small>}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -958,8 +998,15 @@ function ApplicationShell() {
                     <article className={activeCandidate.ok ? 'candidate-card candidate-carousel-card' : 'candidate-card candidate-carousel-card has-error'}>
                       <div className="candidate-card-header">
                         <div>
-                          <strong>{activeCandidate.provider}</strong>
-                          <small>{activeCandidate.ok ? `${activeCandidate.text.split(/\s+/).filter(Boolean).length} Wörter` : activeCandidate.error}</small>
+                          <strong>
+                            {activeCandidate.provider}
+                            {activeCandidateIndex === bestCandidateIndex && activeCandidate.ok ? <span className="best-badge">Beste Version</span> : null}
+                          </strong>
+                          <small>
+                            {activeCandidate.ok
+                              ? `${activeCandidate.text.split(/\s+/).filter(Boolean).length} Wörter · Score ${activeCandidate.score ?? 0}/100`
+                              : activeCandidate.error}
+                          </small>
                         </div>
                         {activeCandidate.ok && (
                           <button type="button" className="text-button" onClick={() => {
@@ -971,7 +1018,13 @@ function ApplicationShell() {
                         )}
                       </div>
                       {activeCandidate.ok ? (
-                        <pre className="candidate-text">{activeCandidate.text}</pre>
+                        <>
+                          <div className="candidate-insights">
+                            {activeCandidate.scoreReasons?.map((reason) => <span key={reason}>{reason}</span>)}
+                            {activeCandidate.costLabel && <span>{activeCandidate.costLabel}</span>}
+                          </div>
+                          <pre className="candidate-text">{activeCandidate.text}</pre>
+                        </>
                       ) : (
                         <p>{activeCandidate.error || 'Diese KI konnte kein Ergebnis liefern.'}</p>
                       )}
@@ -1011,10 +1064,18 @@ function ApplicationShell() {
                 <ul>
                   {applications.map((application) => (
                     <li key={application.id}>
-                      <span>{application.title}</span>
+                      <span>
+                        {application.title}
+                        {application.jobUrl && (
+                          <a className="job-link" href={application.jobUrl} target="_blank" rel="noreferrer">
+                            <ExternalLink size={13} /> Stellenanzeige
+                          </a>
+                        )}
+                      </span>
                       <small>
                         {application.company ? `${application.company} · ` : ''}
                         {application.status} seit {new Date(application.statusUpdatedAt).toLocaleString('de-DE')}
+                        {application.followUpAt ? ` · Wiedervorlage: ${new Date(application.followUpAt).toLocaleDateString('de-DE')}` : ''}
                       </small>
                       <div className="saved-letter-actions">
                         <select value={application.status} onChange={(event) => updateApplicationStatus(application.id, event.target.value as ApplicationStatus)}>
@@ -1022,6 +1083,38 @@ function ApplicationShell() {
                         </select>
                         {application.letterId && <button type="button" onClick={() => openLetter(application.letterId || '')}>Anschreiben öffnen</button>}
                       </div>
+                      <div className="application-meta-grid">
+                        <label>
+                          Link
+                          <input
+                            value={application.jobUrl || ''}
+                            onChange={(event) => setApplications((current) => current.map((item) => item.id === application.id ? { ...item, jobUrl: event.target.value } : item))}
+                            onBlur={(event) => updateApplicationMeta(application, { jobUrl: event.target.value })}
+                            placeholder="https://..."
+                          />
+                        </label>
+                        <label>
+                          Wiedervorlage
+                          <input
+                            type="date"
+                            value={(application.followUpAt || '').slice(0, 10)}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setApplications((current) => current.map((item) => item.id === application.id ? { ...item, followUpAt: value } : item));
+                              updateApplicationMeta(application, { followUpAt: value });
+                            }}
+                          />
+                        </label>
+                      </div>
+                      <label className="application-notes">
+                        Notizen
+                        <textarea
+                          value={application.notes || ''}
+                          onChange={(event) => setApplications((current) => current.map((item) => item.id === application.id ? { ...item, notes: event.target.value } : item))}
+                          onBlur={(event) => updateApplicationMeta(application, { notes: event.target.value })}
+                          placeholder="z. B. Ansprechpartner, Rückmeldung, nächste Schritte ..."
+                        />
+                      </label>
                     </li>
                   ))}
                 </ul>
@@ -1382,14 +1475,44 @@ function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvide
   const hasSubject = jobDetails.subject && normalizedDraft.includes(jobDetails.subject.toLowerCase().replace(/^bewerbung\s+als\s+/, '').slice(0, 18));
 
   return [
-    { label: 'Länge ausreichend', ok: words.length >= 220 },
-    { label: 'Betreff vorhanden', ok: normalizedDraft.includes('bewerbung') && Boolean(hasSubject || jobDetails.subject === 'Bewerbung') },
-    { label: 'Anrede vorhanden', ok: /sehr geehrte|guten tag/i.test(draft) },
-    { label: 'Mindestens 3 Profilbelege', ok: evidenceHits >= 3 },
-    { label: 'Stellenbezug vorhanden', ok: Boolean(jobDetails.title && normalizedDraft.includes(jobDetails.title.toLowerCase().slice(0, 12))) },
-    { label: 'Keine offenen Platzhalter', ok: !hasPlaceholders },
-    { label: 'Schlussformel vorhanden', ok: normalizedDraft.includes('mit freundlichen grüßen') },
+    { label: 'Länge ausreichend', ok: words.length >= 220, hint: `Aktuell ${words.length} Wörter. Ziel: ca. 220–360 Wörter.` },
+    { label: 'Betreff vorhanden', ok: normalizedDraft.includes('bewerbung') && Boolean(hasSubject || jobDetails.subject === 'Bewerbung'), hint: 'Betreff sollte mit „Bewerbung als …“ klar zur Stelle passen.' },
+    { label: 'Anrede vorhanden', ok: /sehr geehrte|guten tag/i.test(draft), hint: 'Eine passende Anrede fehlt oder wurde nicht erkannt.' },
+    { label: 'Mindestens 3 Profilbelege', ok: evidenceHits >= 3, hint: `Aktuell erkannt: ${evidenceHits}. Mehr konkrete Qualifikationen aus dem Profil einbauen.` },
+    { label: 'Stellenbezug vorhanden', ok: Boolean(jobDetails.title && normalizedDraft.includes(jobDetails.title.toLowerCase().slice(0, 12))), hint: 'Die konkrete Position sollte im Einstieg oder Matching-Absatz vorkommen.' },
+    { label: 'Keine offenen Platzhalter', ok: !hasPlaceholders, hint: 'Bitte XXX oder eckige Platzhalter vor dem Versand ersetzen.' },
+    { label: 'Schlussformel vorhanden', ok: normalizedDraft.includes('mit freundlichen grüßen'), hint: 'Die Schlussformel „Mit freundlichen Grüßen“ fehlt.' },
   ];
+}
+
+function evaluateCandidate(text: string, jobDetails: JobDetails, profileEvidence: string[]) {
+  const checks = createQualityChecks(text, jobDetails, profileEvidence);
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const passed = checks.filter((check) => check.ok).length;
+  const lengthBonus = words >= 220 && words <= 380 ? 10 : words > 160 ? 5 : 0;
+  const evidenceHits = profileEvidence.filter((item) => text.toLowerCase().includes(item.toLowerCase())).length;
+  const score = Math.min(100, Math.round((passed / checks.length) * 82 + lengthBonus + Math.min(evidenceHits, 5) * 2));
+  const reasons = [
+    `${passed}/${checks.length} Qualitätschecks erfüllt`,
+    `${words} Wörter`,
+    `${evidenceHits} Profilbelege erkannt`,
+  ];
+  const missing = checks.filter((check) => !check.ok).slice(0, 2).map((check) => `Fehlt: ${check.label}`);
+  return { score, reasons: [...reasons, ...missing] };
+}
+
+function getBestCandidateIndex(candidates: AiCandidate[]) {
+  let bestIndex = -1;
+  let bestScore = -1;
+  candidates.forEach((candidate, index) => {
+    if (!candidate.ok || !candidate.text) return;
+    const score = candidate.score ?? 0;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
 }
 
 function estimateAiCost(provider: string, inputText: string, outputText: string, requests = 1) {
