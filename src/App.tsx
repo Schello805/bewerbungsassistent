@@ -1027,13 +1027,18 @@ function ApplicationShell() {
         </nav>
       </header>
 
-      <main className="app-main">
+      <main className={view === 'apply' ? 'app-main apply-main' : 'app-main settings-main'}>
         {view === 'apply' ? (
         <>
+        <section className="workflow-strip" aria-label="Workflow">
+          <span className={jobInput.trim() ? 'workflow-step done' : 'workflow-step active'}><strong>1</strong> Stelle einfügen</span>
+          <span className={draft ? 'workflow-step done' : jobInput.trim() ? 'workflow-step active' : 'workflow-step'}><strong>2</strong> Profilabgleich prüfen</span>
+          <span className={draft ? 'workflow-step active' : 'workflow-step'}><strong>3</strong> Anschreiben bearbeiten</span>
+        </section>
         <section id="create" className="create-grid apply-grid">
           <article className="panel create-panel">
             <p className="eyebrow">Anschreiben</p>
-            <h1>Link oder Stellenanzeige einfügen</h1>
+            <h1>Stellenanzeige einfügen</h1>
             <label>
               Stellenanzeige / Link
               <textarea
