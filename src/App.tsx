@@ -1419,7 +1419,7 @@ function extractJobDetails(input: string): JobDetails {
   const companyFromText = extractCompany(text);
   const title = extractTitle(text, url);
   const contact = extractContact(text);
-  const recipient = [companyFromText || companyFromUrl, contact].filter(Boolean).join('\n') || 'Empfänger bitte prüfen';
+  const recipient = [companyFromText || companyFromUrl, contact].filter(Boolean).join('\n') || 'XXX Unternehmen\nXXX Ansprechpartner';
   const source = extractJobSource(text, url);
 
   return {
@@ -1441,8 +1441,7 @@ function createDraft({ personalData, jobDetails, profile }: { personalData: Pers
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
   const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
   const requestedParagraphs = createRequestedInfoParagraphs(jobDetails.requestedInfo);
-  const profileStrengths = formatProfileStrengths(profile);
-  const roleFocus = profileStrengths || 'Qualitätsmanagement, Prozessverbesserung und strukturierter Zusammenarbeit';
+  const profileParagraph = createProfileParagraph(profile, personalData);
   const contactLine = [
     personalData.email,
     personalData.phone,
@@ -1467,7 +1466,7 @@ function createDraft({ personalData, jobDetails, profile }: { personalData: Pers
     '',
     `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie operative Verantwortung mit klarer Prozess- und Qualitätsorientierung verbindet. Genau an dieser Schnittstelle arbeite ich besonders gern: Strukturen schaffen, Abläufe verständlich machen und Verbesserungen so umsetzen, dass sie im Tagesgeschäft tragen.`,
     '',
-    `Als ${personalData.qualification || 'erfahrener Bewerber'} verbinde ich betriebswirtschaftliches Denken mit einem sehr praktischen Blick auf Qualität, Standards und Zusammenarbeit. ${roleFocus} bringe ich nicht als reine Stichworte mit, sondern als Arbeitsfelder, in denen saubere Analyse, Verbindlichkeit und pragmatische Umsetzung entscheidend sind.`,
+    profileParagraph,
     '',
     'In meinen bisherigen Aufgaben war mir wichtig, Prozesse nicht nur zu verwalten, sondern wirksam weiterzuentwickeln. Dazu gehören klare Kommunikation, nachvollziehbare Dokumentation, ein gutes Verständnis für Schnittstellen und die Fähigkeit, Anforderungen in konkrete nächste Schritte zu übersetzen.',
     '',
@@ -1483,15 +1482,38 @@ function createDraft({ personalData, jobDetails, profile }: { personalData: Pers
   ].filter((line) => line !== undefined).join('\n');
 }
 
-function formatProfileStrengths(profile: ProfileData) {
+function createProfileParagraph(profile: ProfileData, personalData: PersonalData) {
+  const values = getCleanProfileEvidence(profile);
+  const qualityTerms = values.filter((value) => /qualität|qmb|vda|iso|audit/i.test(value)).slice(0, 3);
+  const processTerms = values.filter((value) => /prozess|lean|kaizen|kvp|fmea|8d|sap|excel|power bi/i.test(value)).slice(0, 2);
+  const qualification = personalData.qualification || values.find((value) => /betriebswirt|bachelor|master|techniker/i.test(value)) || 'erfahrener Bewerber';
+
+  if (qualityTerms.length > 0 || processTerms.length > 0) {
+    const qualityText = qualityTerms.length > 0
+      ? `Meine Erfahrung im ${joinNaturalList(qualityTerms)} hilft mir, Anforderungen sauber zu strukturieren und Qualität nicht nur zu dokumentieren, sondern im Tagesgeschäft wirksam zu verankern`
+      : 'Mein Blick für Qualität, Standards und nachvollziehbare Abläufe hilft mir, Anforderungen sauber zu strukturieren';
+    const processText = processTerms.length > 0
+      ? ` Ergänzend bringe ich Praxis in ${joinNaturalList(processTerms)} ein, um Verbesserungen greifbar und umsetzbar zu machen.`
+      : ' Verbesserungen verstehe ich dabei immer als praktische Arbeit an klaren Abläufen, verlässlicher Kommunikation und nachvollziehbaren Entscheidungen.';
+    return `Als ${qualification} verbinde ich betriebswirtschaftliches Denken mit einem sehr praktischen Blick auf Abläufe, Standards und Zusammenarbeit. ${qualityText}.${processText}`;
+  }
+
+  return `Als ${qualification} verbinde ich analytisches Denken mit einer praxisnahen Arbeitsweise. Wichtig ist mir, Anforderungen verständlich zu machen, Prioritäten klar zu setzen und Verbesserungen so umzusetzen, dass sie im Alltag tatsächlich funktionieren.`;
+}
+
+function getCleanProfileEvidence(profile: ProfileData) {
   const rawValues = getProfileEvidence(profile);
   const blocked = new Set(['michael', 'schellenberger', 'herr', 'frau', 'köln', 'bechhofen', 'befriedigend', 'fachschule', 'dokument', 'pdf']);
-  const values = rawValues
+  return rawValues
     .map((value) => value.trim())
     .filter((value) => value.length >= 3 && !blocked.has(value.toLowerCase()))
-    .slice(0, 5);
+    .slice(0, 8);
+}
 
-  return values.join(', ');
+function joinNaturalList(values: string[]) {
+  if (values.length <= 1) return values[0] || '';
+  if (values.length === 2) return `${values[0]} und ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')} und ${values[values.length - 1]}`;
 }
 
 function getProfileEvidence(profile: ProfileData) {
