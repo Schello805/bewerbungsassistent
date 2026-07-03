@@ -152,7 +152,9 @@ function ApplicationShell() {
   const [apiKeyStatus, setApiKeyStatus] = useState('');
   const [isApiKeyEditing, setIsApiKeyEditing] = useState(false);
   const [googleClientId, setGoogleClientId] = useState('');
+  const [googleClientIdInput, setGoogleClientIdInput] = useState('');
   const [googleClientIdStatus, setGoogleClientIdStatus] = useState('');
+  const [isGoogleClientIdEditing, setIsGoogleClientIdEditing] = useState(false);
   const [profileEvidenceText, setProfileEvidenceText] = useState('');
   const [profileEvidenceStatus, setProfileEvidenceStatus] = useState('');
   const [profileAutoFillStatus, setProfileAutoFillStatus] = useState('');
@@ -167,6 +169,7 @@ function ApplicationShell() {
   const hasApiKey = !providerNeedsApiKey || apiKey.trim().length > 0 || apiKeyProviders.includes(provider);
   const currentProviderHasStoredKey = apiKeyProviders.includes(provider);
   const apiKeyDisplayValue = apiKey || (!isApiKeyEditing && currentProviderHasStoredKey ? '••••••••••••' : '');
+  const googleClientIdDisplayValue = googleClientIdInput || (!isGoogleClientIdEditing && googleClientId ? '••••••••••••' : '');
   const activeCandidate = candidates[Math.min(activeCandidateIndex, Math.max(candidates.length - 1, 0))];
   const bestCandidateIndex = getBestCandidateIndex(candidates);
   const profileEvidence = getProfileEvidence(profile);
@@ -244,6 +247,8 @@ function ApplicationShell() {
       }
       if (data.googleClientId) {
         setGoogleClientId(data.googleClientId);
+        setGoogleClientIdInput('');
+        setIsGoogleClientIdEditing(false);
       }
       if (Array.isArray(data.profileEvidence)) {
         setProfileEvidenceText(data.profileEvidence.join('\n'));
@@ -325,12 +330,20 @@ function ApplicationShell() {
   }
 
   function updateGoogleClientId(value: string) {
-    setGoogleClientId(value);
+    setGoogleClientIdInput(value);
+    setIsGoogleClientIdEditing(true);
     setGoogleClientIdStatus(value.trim().length > 0 ? 'Noch nicht gespeichert.' : '');
   }
 
+  function startGoogleClientIdEditing() {
+    if (isGoogleClientIdEditing || !googleClientId) return;
+    setGoogleClientIdInput('');
+    setIsGoogleClientIdEditing(true);
+    setGoogleClientIdStatus('Neue Client-ID eintragen oder leer speichern zum Entfernen.');
+  }
+
   async function saveGoogleClientId() {
-    const normalizedClientId = normalizeGoogleClientId(googleClientId);
+    const normalizedClientId = normalizeGoogleClientId(isGoogleClientIdEditing ? googleClientIdInput : googleClientId);
 
     if (normalizedClientId && !isValidGoogleClientId(normalizedClientId)) {
       setGoogleClientIdStatus('Bitte die vollständige Client-ID eintragen: ...apps.googleusercontent.com');
@@ -339,6 +352,8 @@ function ApplicationShell() {
 
     try {
       setGoogleClientId(normalizedClientId);
+      setGoogleClientIdInput('');
+      setIsGoogleClientIdEditing(false);
       await saveSettings({ googleClientId: normalizedClientId });
       setGoogleClientIdStatus(normalizedClientId ? 'Google Client-ID gespeichert.' : 'Google Client-ID entfernt.');
     } catch {
@@ -1256,7 +1271,7 @@ function ApplicationShell() {
               </div>
             </div>
             <div className="google-client-box">
-              <TextField label="Google OAuth Client-ID" value={googleClientId} onChange={updateGoogleClientId} />
+              <TextField label="Google OAuth Client-ID" value={googleClientIdDisplayValue} onChange={updateGoogleClientId} onFocus={startGoogleClientIdEditing} />
               <div className="google-client-actions">
                 <p className="field-note">
                   {googleClientIdStatus || 'Vollständige Client-ID eintragen, nicht den Clientschlüssel. Ohne Client-ID öffnet die App docs.new und kopiert den Text.'}
@@ -1365,11 +1380,11 @@ function LetterPreview({ text }: { text: string }) {
   );
 }
 
-function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function TextField({ label, value, onChange, onFocus }: { label: string; value: string; onChange: (value: string) => void; onFocus?: () => void }) {
   return (
     <label>
       {label}
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      <input value={value} onChange={(event) => onChange(event.target.value)} onFocus={onFocus} />
     </label>
   );
 }
