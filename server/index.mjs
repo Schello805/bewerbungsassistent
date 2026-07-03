@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import net from 'node:net';
+import crypto from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -18,15 +19,18 @@ const dataDir = path.join(rootDir, 'datenbasis');
 const lettersDir = path.join(rootDir, 'anschreiben');
 const storageDir = path.join(rootDir, 'data');
 const databasePath = path.join(storageDir, 'app.db');
+const secretPath = path.join(storageDir, 'secret.key');
 const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || '0.0.0.0';
 const isProduction = process.env.NODE_ENV === 'production';
 const execFileAsync = promisify(execFile);
 let updateInProgress = false;
+const updateLogs = [];
 
 await fs.mkdir(dataDir, { recursive: true });
 await fs.mkdir(lettersDir, { recursive: true });
 await fs.mkdir(storageDir, { recursive: true });
+const encryptionKey = await loadEncryptionKey();
 
 const db = new Database(databasePath);
 db.pragma('journal_mode = WAL');
@@ -130,13 +134,14 @@ app.get('/api/profile', async (_request, response, next) => {
 
 app.get('/api/settings', (_request, response, next) => {
   try {
-    const apiKeys = getSetting('apiKeys', {});
+    const apiKeys = getApiKeyMap();
     response.json({
       personalData: getSetting('personalData', null),
       provider: getSetting('provider', null),
       voice: getSetting('voice', null),
       googleClientId: getSetting('googleClientId', null),
       profileEvidence: getSetting('profileEvidence', []),
+      apiKeyStorageMode: getSetting('apiKeyStorageMode', 'server'),
       apiKeyProviders: Object.entries(apiKeys)
         .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
         .map(([key]) => key),
@@ -158,12 +163,15 @@ app.post('/api/update', async (_request, response) => {
   }
 
   updateInProgress = true;
+  updateLogs.length = 0;
+  addUpdateLog('Update gestartet.');
   try {
     const result = await runSelfUpdate();
-    response.json(result);
+    response.json({ ...result, logs: updateLogs.slice(-12) });
     setTimeout(() => process.exit(0), 1200);
   } catch (error) {
     updateInProgress = false;
+    addUpdateLog(error instanceof Error ? `Fehler: ${error.message}` : 'Update fehlgeschlagen.');
     response.status(400).json({ error: error instanceof Error ? error.message : 'Update fehlgeschlagen.' });
   }
 });
@@ -182,6 +190,9 @@ app.put('/api/settings', (request, response, next) => {
     if ('googleClientId' in request.body) {
       setSetting('googleClientId', request.body.googleClientId);
     }
+    if ('apiKeyStorageMode' in request.body) {
+      setSetting('apiKeyStorageMode', request.body.apiKeyStorageMode === 'session' ? 'session' : 'server');
+    }
     if ('profileEvidence' in request.body) {
       const profileEvidence = Array.isArray(request.body.profileEvidence)
         ? request.body.profileEvidence.map((item) => String(item).trim()).filter(Boolean).slice(0, 80)
@@ -189,7 +200,7 @@ app.put('/api/settings', (request, response, next) => {
       setSetting('profileEvidence', profileEvidence);
     }
     if ('apiKey' in request.body) {
-      const apiKeys = getSetting('apiKeys', {});
+      const apiKeys = getApiKeyMap();
       const provider = typeof request.body.provider === 'string' && request.body.provider.trim()
         ? request.body.provider.trim()
         : getSetting('provider', 'OpenAI');
@@ -201,7 +212,7 @@ app.put('/api/settings', (request, response, next) => {
         delete apiKeys[provider];
       }
 
-      setSetting('apiKeys', apiKeys);
+      setApiKeyMap(apiKeys);
     }
     response.json({ ok: true });
   } catch (error) {
@@ -546,7 +557,7 @@ app.post('/api/rewrite-letter', async (request, response, next) => {
 app.post(['/api/compare-letter', '/compare-letter'], async (request, response, next) => {
   try {
     const requestApiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
-    const apiKeys = getSetting('apiKeys', {});
+    const apiKeys = getApiKeyMap();
     const providers = getComparableProviders(apiKeys, request.body.provider, requestApiKey);
     const profile = await readProfileFromDataDir();
     const prompt = buildAiPrompt({
@@ -658,6 +669,66 @@ function getSetting(key, fallback) {
   }
 }
 
+async function loadEncryptionKey() {
+  try {
+    const existing = (await fs.readFile(secretPath, 'utf8')).trim();
+    if (/^[a-f0-9]{64}$/i.test(existing)) return Buffer.from(existing, 'hex');
+  } catch {
+    // Create a server-local secret on first start.
+  }
+  const key = crypto.randomBytes(32);
+  await fs.writeFile(secretPath, key.toString('hex'), { mode: 0o600 });
+  return key;
+}
+
+function encryptString(value) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `v1:${iv.toString('base64')}:${tag.toString('base64')}:${encrypted.toString('base64')}`;
+}
+
+function decryptString(value) {
+  if (typeof value !== 'string' || !value.startsWith('v1:')) return typeof value === 'string' ? value : '';
+  const [, ivBase64, tagBase64, encryptedBase64] = value.split(':');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, Buffer.from(ivBase64, 'base64'));
+  decipher.setAuthTag(Buffer.from(tagBase64, 'base64'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encryptedBase64, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+function getApiKeyMap() {
+  const encryptedMap = getSetting('apiKeysEncrypted', null);
+  if (encryptedMap && typeof encryptedMap === 'object') {
+    return Object.fromEntries(Object.entries(encryptedMap).map(([provider, encryptedValue]) => {
+      try {
+        return [provider, decryptString(encryptedValue)];
+      } catch {
+        return [provider, ''];
+      }
+    }).filter(([, value]) => value));
+  }
+
+  const legacyMap = getSetting('apiKeys', {});
+  if (legacyMap && typeof legacyMap === 'object' && Object.keys(legacyMap).length > 0) {
+    setApiKeyMap(legacyMap);
+    setSetting('apiKeys', {});
+    return legacyMap;
+  }
+
+  return {};
+}
+
+function setApiKeyMap(apiKeys) {
+  const encryptedMap = Object.fromEntries(Object.entries(apiKeys || {})
+    .filter(([, value]) => typeof value === 'string' && value.trim())
+    .map(([provider, value]) => [provider, encryptString(value.trim())]));
+  setSetting('apiKeysEncrypted', encryptedMap);
+}
+
 function setSetting(key, value) {
   db.prepare(`
     INSERT INTO settings (key, value, updated_at)
@@ -669,7 +740,7 @@ function setSetting(key, value) {
 }
 
 function getProviderApiKey(provider) {
-  const apiKeys = getSetting('apiKeys', {});
+  const apiKeys = getApiKeyMap();
   const apiKey = apiKeys?.[provider];
   return typeof apiKey === 'string' ? apiKey.trim() : '';
 }
@@ -816,6 +887,7 @@ async function restoreBackup(backup) {
 
 async function getUpdateStatus() {
   try {
+    addUpdateLog('GitHub wird auf Updates geprüft.');
     const current = await gitOutput(['rev-parse', '--short', 'HEAD']);
     await gitOutput(['fetch', 'origin', 'main']);
     const remote = await gitOutput(['rev-parse', '--short', 'origin/main']);
@@ -828,30 +900,41 @@ async function getUpdateStatus() {
       updateAvailable: behind > 0,
       behind,
       updating: updateInProgress,
+      logs: updateLogs.slice(-12),
     };
   } catch (error) {
     return {
       ok: false,
       updateAvailable: false,
       updating: updateInProgress,
+      logs: updateLogs.slice(-12),
       error: error instanceof Error ? error.message : 'Update-Status konnte nicht geprüft werden.',
     };
   }
 }
 
 async function runSelfUpdate() {
+  addUpdateLog('Remote-Stand wird geladen.');
   await gitOutput(['fetch', 'origin', 'main']);
   const before = await gitOutput(['rev-parse', '--short', 'HEAD']);
   const behind = Number(await gitOutput(['rev-list', '--count', 'HEAD..origin/main']) || 0);
 
   if (behind === 0) {
     updateInProgress = false;
+    addUpdateLog('Keine neue Version verfügbar.');
     return { ok: true, updated: false, message: 'Keine neue Version verfügbar.', current: before };
   }
 
+  addUpdateLog(`${behind} Änderung(en) gefunden. Update-Script startet.`);
   await execInRoot('bash', ['scripts/update.sh', '--app-only'], 240000);
   const current = await gitOutput(['rev-parse', '--short', 'HEAD']);
+  addUpdateLog(`Update installiert: ${before} → ${current}.`);
   return { ok: true, updated: true, message: 'Update installiert. Server startet neu.', before, current };
+}
+
+function addUpdateLog(message) {
+  updateLogs.push({ at: new Date().toISOString(), message });
+  if (updateLogs.length > 40) updateLogs.splice(0, updateLogs.length - 40);
 }
 
 async function gitOutput(args) {
@@ -899,6 +982,7 @@ async function fetchJobPosting(url) {
 
 function buildAiPrompt({ personalData, jobInput, jobDetails, voice, profile }) {
   const profileContext = buildProfileContext(profile);
+  const templateInstruction = getTemplateInstruction(voice);
   const source = jobDetails?.source || detectJobSource(jobInput || '');
   const sourceInstruction = source
     ? `Der Einstieg muss natürlich erwähnen, dass die Ausschreibung auf ${source} gefunden wurde. Beispielhaft: "Ihre Ausschreibung auf ${source} ..." oder eleganter.`
@@ -942,7 +1026,8 @@ Aufbau des Haupttexts:
 4. Mehrwert: erklären, welche Wirkung der Bewerber im Unternehmen erzeugen kann.
 5. Abschluss: Gesprächswunsch, selbstbewusst und freundlich.
 
-Stil: ${voice || 'klar und professionell'}
+Stil/Vorlage: ${voice || 'klar und professionell'}
+${templateInstruction}
 
 Absenderdaten:
 ${JSON.stringify(personalData ?? {}, null, 2)}
@@ -956,6 +1041,22 @@ ${jobInput || ''}
 Profilinformationen zur inhaltlichen Nutzung, nicht wörtlich kopieren:
 ${profileContext}
 `.trim();
+}
+
+function getTemplateInstruction(voice) {
+  const instructions = {
+    'Locker und modern': 'Ton: modern, natürlich, aktiv, ohne steife Floskeln.',
+    'Formell und traditionell': 'Ton: klassisch, seriös, konservativ, sehr sauber formuliert.',
+    'Direkt und selbstbewusst': 'Ton: klar, ergebnisorientiert, selbstbewusst, aber nicht überheblich.',
+    'Warm und persönlich': 'Ton: freundlich, menschlich, verbindlich und nahbar.',
+    Konservativ: 'Vorlage: konservatives Anschreiben mit sachlichem Einstieg, klaren Belegen und zurückhaltender Wirkung.',
+    Modern: 'Vorlage: modernes Anschreiben mit starkem Einstieg, klaren kurzen Sätzen und natürlicher Sprache.',
+    Führungsstark: 'Vorlage: betone Verantwortung, Priorisierung, Kommunikation, Steuerung und Wirkung auf Teams/Prozesse.',
+    Kurz: 'Vorlage: kompaktes Anschreiben mit 170 bis 230 Wörtern im Haupttext, keine Redundanzen.',
+    Ausführlich: 'Vorlage: ausführlicher, aber strukturiert; 320 bis 430 Wörter im Haupttext mit konkreterem Matching.',
+    Initiativbewerbung: 'Vorlage: keine konkrete Ausschreibung voraussetzen; Motivation, Profil und möglicher Mehrwert für das Unternehmen erklären.',
+  };
+  return instructions[voice] || 'Ton: klar, professionell und konkret.';
 }
 
 function buildRewritePrompt({ text, mode, voice, personalData, jobDetails }) {
@@ -997,6 +1098,7 @@ ${text}
 
 function buildProfileContext(profile) {
   const insights = profile?.insights ?? {};
+  const structured = profile?.structured ?? {};
   const documents = Array.isArray(profile?.documents) ? profile.documents : [];
   const evidence = Array.isArray(profile?.evidence) ? profile.evidence : [];
   const documentNames = documents
@@ -1011,6 +1113,7 @@ function buildProfileContext(profile) {
 
   return [
     `Verbindliche Profilbelege für das Anschreiben: ${evidence.slice(0, 18).join(', ') || 'keine eindeutig erkannt'}`,
+    `Strukturierte Profilanalyse: Stationen=${(structured.stations ?? []).slice(0, 8).join(', ') || '-'}; Skills=${(structured.skills ?? []).slice(0, 10).join(', ') || '-'}; Zertifikate=${(structured.certificates ?? []).slice(0, 10).join(', ') || '-'}; Branchen=${(structured.industries ?? []).slice(0, 8).join(', ') || '-'}; Führung=${(structured.leadership ?? []).slice(0, 8).join(', ') || '-'}; QM/Audit=${(structured.quality ?? []).slice(0, 10).join(', ') || '-'}; Tools=${(structured.tools ?? []).slice(0, 8).join(', ') || '-'}`,
     `Kompetenzen: ${(insights.skills ?? []).slice(0, 10).join(', ') || 'keine eindeutig erkannt'}`,
     `Rollen/Erfahrung: ${(insights.roles ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
     `Ausbildung/Zertifikate: ${(insights.education ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
@@ -1231,6 +1334,7 @@ async function readProfileFromDataDir() {
     keywords: extractKeywords(combinedText),
     evidence: uniqueMatches([...customEvidence, ...extractProfileEvidence(combinedText, documents)]),
     insights: extractProfileInsights(combinedText),
+    structured: extractStructuredProfile(combinedText, documents),
   };
 }
 
@@ -1312,6 +1416,36 @@ function extractProfileInsights(text) {
     education: uniqueMatches(normalized.match(educationPattern) ?? []).slice(0, 8),
     strengths: uniqueMatches(strengthPatterns.filter((strength) => new RegExp(`\\b${escapeRegExp(strength)}\\b`, 'i').test(normalized))).slice(0, 10),
   };
+}
+
+function extractStructuredProfile(text, documents = []) {
+  const normalized = normalizeText(text);
+  const insights = extractProfileInsights(normalized);
+  const stations = uniqueMatches((normalized.match(/\b(?:bei|firma|gmbh|ag|kg|inc\.?|ltd\.?)\s+[A-ZÄÖÜ][\wäöüß& .-]{2,60}/g) ?? [])
+    .map((value) => value.replace(/^bei\s+/i, '').trim()))
+    .filter((value) => !/zeugnis|zertifikat|lebenslauf/i.test(value))
+    .slice(0, 10);
+  const industries = uniqueMatches([
+    ...matchKnownTerms(normalized, ['Automotive', 'Industrie', 'Produktion', 'Dienstleistung', 'Qualitätsmanagement', 'IT', 'Handel', 'Logistik', 'Maschinenbau', 'Metall', 'Kunststoff']),
+    ...documents.map((document) => document.fileName).filter((name) => /automotive|industrie|produktion|logistik|quality|qualität/i.test(name)),
+  ]).slice(0, 10);
+  const leadership = matchKnownTerms(normalized, ['Führung', 'Teamführung', 'Leitung', 'Projektleitung', 'Verantwortung', 'Koordination', 'Head', 'Manager']).slice(0, 10);
+  const quality = matchKnownTerms(normalized, ['Qualitätsmanagement', 'Qualitätssicherung', 'QMB', 'VDA 6.3', 'ISO 9001', 'IATF 16949', 'Audit', 'Auditor', '8D', 'FMEA', 'APQP', 'PPAP']).slice(0, 14);
+  const tools = matchKnownTerms(normalized, ['SAP', 'Excel', 'Power BI', 'MS Office', 'ERP', 'CAQ', 'Ollama', 'Google Docs']).slice(0, 10);
+
+  return {
+    stations,
+    skills: insights.skills ?? [],
+    certificates: uniqueMatches([...(insights.education ?? []), ...quality.filter((item) => /vda|iso|iatf|audit|qmb|zertifikat/i.test(item))]).slice(0, 12),
+    industries,
+    leadership,
+    quality,
+    tools,
+  };
+}
+
+function matchKnownTerms(text, terms) {
+  return uniqueMatches(terms.filter((term) => new RegExp(`\\b${escapeRegExp(term)}\\b`, 'i').test(text)));
 }
 
 function extractProfileEvidence(text, documents = []) {
