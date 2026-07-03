@@ -43,6 +43,12 @@ curl -fsSL https://raw.githubusercontent.com/Schello805/bewerbungsassistent/main
 bash install-bewerbungsassistent.sh
 ```
 
+Wenn der Server bereits `curl`, `git`, `gnupg`, `build-essential` und Node.js hat und `apt-get update` bei `0% [Working]` hängen bleibt, kann der APT-Schritt übersprungen werden:
+
+```bash
+SKIP_APT=1 bash install-bewerbungsassistent.sh
+```
+
 Das Installationsscript führt die Einrichtung vollständig aus:
 
 - System prüfen

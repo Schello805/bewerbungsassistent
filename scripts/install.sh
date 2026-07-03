@@ -7,6 +7,7 @@ APP_DIR="${APP_DIR:-/opt/bewerbungsassistent}"
 SERVICE_USER="${SERVICE_USER:-bewerbungsassistent}"
 PORT="${PORT:-5173}"
 NODE_MAJOR="${NODE_MAJOR:-22}"
+SKIP_APT="${SKIP_APT:-auto}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 
 log() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
@@ -33,11 +34,30 @@ detect_os() {
 }
 
 install_base_packages() {
+  if [[ "${SKIP_APT}" == "1" || "${SKIP_APT}" == "true" ]]; then
+    warn "APT-Schritt wird übersprungen, weil SKIP_APT=${SKIP_APT} gesetzt ist."
+    return
+  fi
+
+  if [[ "${SKIP_APT}" == "auto" ]] \
+    && command -v curl >/dev/null 2>&1 \
+    && command -v git >/dev/null 2>&1 \
+    && command -v gpg >/dev/null 2>&1 \
+    && dpkg-query -W -f='${Status}' build-essential 2>/dev/null | grep -q "install ok installed"; then
+    success "Basispakete sind bereits vorhanden. Überspringe APT-Aktualisierung."
+    return
+  fi
+
   log "Aktualisiere Paketlisten ..."
-  apt-get update
+  timeout 180 apt-get \
+    -o Acquire::Retries=3 \
+    -o Acquire::http::Timeout=30 \
+    -o Acquire::https::Timeout=30 \
+    update || fail "APT-Paketlisten konnten nicht aktualisiert werden. Prüfe Netzwerk/DNS oder starte erneut mit: SKIP_APT=1 bash install-bewerbungsassistent.sh"
 
   log "Installiere Basispakete ..."
-  apt-get install -y ca-certificates curl git gnupg build-essential
+  DEBIAN_FRONTEND=noninteractive timeout 240 apt-get install -y ca-certificates curl git gnupg build-essential \
+    || fail "Basispakete konnten nicht installiert werden."
   success "Basispakete installiert."
 }
 
@@ -55,7 +75,8 @@ install_nodejs() {
   fi
 
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
-  apt-get install -y nodejs
+  DEBIAN_FRONTEND=noninteractive timeout 240 apt-get install -y nodejs \
+    || fail "Node.js konnte nicht installiert werden."
   success "Node.js installiert: $(node --version), npm $(npm --version)"
 }
 
