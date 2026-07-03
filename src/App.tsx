@@ -1508,10 +1508,10 @@ function createQualityExperienceSentence(terms: string[]) {
   if (hasQualityManagement || hasQmb || auditTerms.length > 0) {
     const parts = [
       hasQualityManagement ? 'im Qualitätsmanagement' : '',
-      hasQmb ? 'als Qualitätsmanagementbeauftragter' : '',
-      auditTerms.length > 0 ? `mit Bezug zu ${joinNaturalList(auditTerms)}` : '',
+      hasQmb ? 'in der Rolle als Qualitätsmanagementbeauftragter' : '',
+      auditTerms.length > 0 ? `im Umgang mit ${joinNaturalList(auditTerms)}` : '',
     ].filter(Boolean);
-    return `Meine Erfahrung ${joinNaturalList(parts)} hilft mir, Anforderungen sauber zu strukturieren und Qualität nicht nur zu dokumentieren, sondern im Tagesgeschäft wirksam zu verankern.`;
+    return `${capitalizeFirst(joinNaturalList(parts))} habe ich gelernt, Anforderungen in klare Standards, belastbare Dokumentation und praktikable Routinen zu übersetzen. So wird Qualität nicht nur beschrieben, sondern im Tagesgeschäft wirksam verankert.`;
   }
 
   return terms.length > 0
@@ -1532,6 +1532,10 @@ function joinNaturalList(values: string[]) {
   if (values.length <= 1) return values[0] || '';
   if (values.length === 2) return `${values[0]} und ${values[1]}`;
   return `${values.slice(0, -1).join(', ')} und ${values[values.length - 1]}`;
+}
+
+function capitalizeFirst(value: string) {
+  return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : '';
 }
 
 function getProfileEvidence(profile: ProfileData) {
