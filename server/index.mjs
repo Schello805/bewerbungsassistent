@@ -44,6 +44,18 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS applications (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    company TEXT NOT NULL,
+    job_input TEXT NOT NULL,
+    letter_id TEXT,
+    status TEXT NOT NULL DEFAULT 'Entwurf',
+    status_updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 const app = express();
@@ -116,6 +128,7 @@ app.get('/api/settings', (_request, response, next) => {
       provider: getSetting('provider', null),
       voice: getSetting('voice', null),
       googleClientId: getSetting('googleClientId', null),
+      profileEvidence: getSetting('profileEvidence', []),
       apiKeyProviders: Object.entries(apiKeys)
         .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
         .map(([key]) => key),
@@ -160,6 +173,12 @@ app.put('/api/settings', (request, response, next) => {
     }
     if ('googleClientId' in request.body) {
       setSetting('googleClientId', request.body.googleClientId);
+    }
+    if ('profileEvidence' in request.body) {
+      const profileEvidence = Array.isArray(request.body.profileEvidence)
+        ? request.body.profileEvidence.map((item) => String(item).trim()).filter(Boolean).slice(0, 80)
+        : [];
+      setSetting('profileEvidence', profileEvidence);
     }
     if ('apiKey' in request.body) {
       const apiKeys = getSetting('apiKeys', {});
@@ -323,6 +342,70 @@ app.delete('/api/letters/:id', (request, response, next) => {
       return;
     }
     response.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/applications', (_request, response, next) => {
+  try {
+    const applications = db.prepare(`
+      SELECT id, title, company, job_input AS jobInput, letter_id AS letterId, status,
+             status_updated_at AS statusUpdatedAt, created_at AS createdAt, updated_at AS updatedAt
+      FROM applications
+      ORDER BY updated_at DESC
+    `).all();
+    response.json({ applications });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/applications', (request, response, next) => {
+  try {
+    const now = new Date().toISOString();
+    const title = String(request.body.title || 'Bewerbung').trim();
+    const company = String(request.body.company || '').trim();
+    const jobInput = String(request.body.jobInput || '').trim();
+    const letterId = typeof request.body.letterId === 'string' ? request.body.letterId : null;
+    const status = normalizeApplicationStatus(request.body.status || 'Entwurf');
+    const id = String(request.body.id || `${now.replaceAll(/[:.]/g, '-')}-${sanitizeFileName(title)}`).trim();
+
+    db.prepare(`
+      INSERT INTO applications (id, title, company, job_input, letter_id, status, status_updated_at, created_at, updated_at)
+      VALUES (@id, @title, @company, @jobInput, @letterId, @status, @now, @now, @now)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        company = excluded.company,
+        job_input = excluded.job_input,
+        letter_id = excluded.letter_id,
+        updated_at = excluded.updated_at
+    `).run({ id, title, company, jobInput, letterId, status, now });
+
+    response.status(201).json({
+      application: { id, title, company, jobInput, letterId, status, statusUpdatedAt: now, createdAt: now, updatedAt: now },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/applications/:id/status', (request, response, next) => {
+  try {
+    const status = normalizeApplicationStatus(request.body.status);
+    const now = new Date().toISOString();
+    const result = db.prepare(`
+      UPDATE applications
+      SET status = @status, status_updated_at = @now, updated_at = @now
+      WHERE id = @id
+    `).run({ id: request.params.id, status, now });
+
+    if (result.changes === 0) {
+      response.status(404).json({ error: 'Bewerbung nicht gefunden.' });
+      return;
+    }
+
+    response.json({ ok: true, status, statusUpdatedAt: now });
   } catch (error) {
     next(error);
   }
@@ -527,6 +610,12 @@ function providerRequiresApiKey(provider) {
   return provider !== 'Llama lokal';
 }
 
+function normalizeApplicationStatus(status) {
+  const allowed = ['Entwurf', 'Versendet', 'Zwischenbescheid', 'Absage', 'Vorstellungsgespräch'];
+  const value = String(status || 'Entwurf').trim();
+  return allowed.includes(value) ? value : 'Entwurf';
+}
+
 function getComparableProviders(apiKeys, selectedProvider, requestApiKey = '') {
   const savedProviders = Object.entries(apiKeys)
     .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
@@ -544,6 +633,12 @@ async function createBackup() {
     }
   }));
   const letters = db.prepare('SELECT id, title, text, size, created_at AS createdAt, updated_at AS updatedAt FROM letters ORDER BY updated_at DESC').all();
+  const applications = db.prepare(`
+    SELECT id, title, company, job_input AS jobInput, letter_id AS letterId, status,
+           status_updated_at AS statusUpdatedAt, created_at AS createdAt, updated_at AS updatedAt
+    FROM applications
+    ORDER BY updated_at DESC
+  `).all();
   const entries = await fs.readdir(dataDir, { withFileTypes: true });
   const documents = await Promise.all(entries
     .filter((entry) => entry.isFile() && entry.name !== '.gitkeep')
@@ -566,6 +661,7 @@ async function createBackup() {
     createdAt: new Date().toISOString(),
     settings,
     letters,
+    applications,
     documents,
   };
 }
@@ -611,6 +707,36 @@ async function restoreBackup(backup) {
     }
   });
   restoreLetters(backup.letters);
+
+  const restoreApplications = db.transaction((applications) => {
+    for (const application of applications || []) {
+      if (!application?.id || !application?.title) continue;
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO applications (id, title, company, job_input, letter_id, status, status_updated_at, created_at, updated_at)
+        VALUES (@id, @title, @company, @jobInput, @letterId, @status, @statusUpdatedAt, @createdAt, @updatedAt)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          company = excluded.company,
+          job_input = excluded.job_input,
+          letter_id = excluded.letter_id,
+          status = excluded.status,
+          status_updated_at = excluded.status_updated_at,
+          updated_at = excluded.updated_at
+      `).run({
+        id: sanitizeFileName(application.id),
+        title: String(application.title),
+        company: String(application.company || ''),
+        jobInput: String(application.jobInput || ''),
+        letterId: application.letterId || null,
+        status: normalizeApplicationStatus(application.status),
+        statusUpdatedAt: application.statusUpdatedAt || now,
+        createdAt: application.createdAt || now,
+        updatedAt: application.updatedAt || now,
+      });
+    }
+  });
+  restoreApplications(backup.applications);
 }
 
 async function getUpdateStatus() {
@@ -648,9 +774,7 @@ async function runSelfUpdate() {
     return { ok: true, updated: false, message: 'Keine neue Version verfügbar.', current: before };
   }
 
-  await gitOutput(['pull', '--ff-only', 'origin', 'main']);
-  await execInRoot('npm', ['ci'], 180000);
-  await execInRoot('npm', ['run', 'build'], 180000);
+  await execInRoot('bash', ['scripts/update.sh', '--app-only'], 240000);
   const current = await gitOutput(['rev-parse', '--short', 'HEAD']);
   return { ok: true, updated: true, message: 'Update installiert. Server startet neu.', before, current };
 }
@@ -971,6 +1095,7 @@ async function readProfileFromDataDir() {
   }));
 
   const combinedText = documents.map((document) => document.text).join('\n\n');
+  const customEvidence = getSetting('profileEvidence', []);
   return {
     documents: documents.map(({ text, ...document }) => ({
       ...document,
@@ -978,7 +1103,7 @@ async function readProfileFromDataDir() {
     })),
     text: combinedText.slice(0, 18000),
     keywords: extractKeywords(combinedText),
-    evidence: extractProfileEvidence(combinedText, documents),
+    evidence: uniqueMatches([...customEvidence, ...extractProfileEvidence(combinedText, documents)]),
     insights: extractProfileInsights(combinedText),
   };
 }
