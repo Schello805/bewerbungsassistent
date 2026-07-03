@@ -753,10 +753,15 @@ function ApplicationShell() {
       documentWindow = window.open('about:blank', '_blank');
       if (documentWindow) {
         documentWindow.opener = null;
-        documentWindow.document.write('<!doctype html><title>Google Docs</title><body style="font-family:system-ui;margin:32px">Google Doc wird erstellt ...</body>');
+        writeGoogleDocsStatus(documentWindow, 'Google Doc wird vorbereitet ...', 'Bitte Google-Anmeldung bestätigen. Dieses Fenster öffnet anschließend automatisch das Dokument.');
       }
 
+      setLetterStatus('Google-Anmeldung wird geöffnet ...');
       const accessToken = await requestGoogleAccessToken(normalizedClientId);
+      setLetterStatus('Google Doc wird erstellt ...');
+      if (documentWindow && !documentWindow.closed) {
+        writeGoogleDocsStatus(documentWindow, 'Google Doc wird erstellt ...', 'Das Dokument wird bei Google angelegt und danach befüllt.');
+      }
       const createResponse = await fetch('https://docs.googleapis.com/v1/documents', {
         method: 'POST',
         headers: {
@@ -767,6 +772,9 @@ function ApplicationShell() {
       });
       if (!createResponse.ok) throw new Error(await readGoogleError(createResponse, 'Google-Dokument konnte nicht erstellt werden.'));
       const document = await createResponse.json() as { documentId: string };
+      if (documentWindow && !documentWindow.closed) {
+        writeGoogleDocsStatus(documentWindow, 'Text wird eingefügt ...', 'Das Anschreiben wird jetzt in das Google Doc übertragen.');
+      }
       const insertResponse = await fetch(`https://docs.googleapis.com/v1/documents/${document.documentId}:batchUpdate`, {
         method: 'POST',
         headers: {
@@ -784,10 +792,11 @@ function ApplicationShell() {
       }
       setLetterStatus('Google Docs Dokument erstellt.');
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Google Docs konnte nicht geöffnet werden.';
       if (documentWindow && !documentWindow.closed) {
-        documentWindow.close();
+        writeGoogleDocsStatus(documentWindow, 'Google Docs konnte nicht erstellt werden.', message);
       }
-      setLetterStatus(error instanceof Error ? error.message : 'Google Docs konnte nicht geöffnet werden.');
+      setLetterStatus(message);
     } finally {
       setIsGoogleLoading(false);
     }
@@ -1631,7 +1640,7 @@ function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvide
     { label: 'Anrede vorhanden', ok: /sehr geehrte|guten tag/i.test(draft), hint: 'Eine passende Anrede fehlt oder wurde nicht erkannt.' },
     { label: 'Mindestens 3 Profilbelege', ok: evidenceHits >= 3, hint: `Aktuell erkannt: ${evidenceHits}. Mehr konkrete Qualifikationen aus dem Profil einbauen.` },
     { label: 'Stellenbezug vorhanden', ok: hasJobReference, hint: 'Die konkrete Position sollte im Einstieg oder Matching-Absatz vorkommen.' },
-    { label: 'Keine offenen Platzhalter', ok: !hasPlaceholders, hint: placeholderHint },
+    { label: 'Empfänger und Platzhalter vollständig', ok: !hasPlaceholders, hint: placeholderHint },
     { label: 'Schlussformel vorhanden', ok: normalizedDraft.includes('mit freundlichen grüßen'), hint: 'Die Schlussformel „Mit freundlichen Grüßen“ fehlt.' },
   ];
 }
@@ -1955,6 +1964,12 @@ async function requestGoogleAccessToken(clientId: string): Promise<string> {
   await loadGoogleIdentityScript();
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('Google-Anmeldung wurde nicht abgeschlossen. Bitte Pop-up/Anmeldefenster prüfen und erneut versuchen.'));
+    }, 90000);
     const google = (window as unknown as { google?: {
       accounts?: {
         oauth2?: {
@@ -1970,6 +1985,9 @@ async function requestGoogleAccessToken(clientId: string): Promise<string> {
       client_id: clientId,
       scope: 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file',
       callback: (response) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
         if (response.error || !response.access_token) {
           reject(new Error(response.error || 'Google-Anmeldung fehlgeschlagen.'));
           return;
@@ -1979,12 +1997,52 @@ async function requestGoogleAccessToken(clientId: string): Promise<string> {
     });
 
     if (!tokenClient) {
+      settled = true;
+      window.clearTimeout(timeout);
       reject(new Error('Google-Anmeldung konnte nicht geladen werden.'));
       return;
     }
 
     tokenClient.requestAccessToken();
   });
+}
+
+function writeGoogleDocsStatus(targetWindow: Window, title: string, message: string) {
+  const isError = /konnte nicht|fehlgeschlagen|fehler/i.test(title);
+  targetWindow.document.open();
+  targetWindow.document.write(`<!doctype html>
+    <html lang="de">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(title)}</title>
+        <style>
+          body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f6f7fb; color: #111827; }
+          main { max-width: 520px; margin: 32px; padding: 28px; border: 1px solid #e5e7eb; border-radius: 18px; background: #fff; box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08); }
+          h1 { margin: 0 0 10px; font-size: 22px; }
+          p { margin: 0; color: #64748b; line-height: 1.5; }
+          .spinner { width: 28px; height: 28px; margin-bottom: 18px; border: 3px solid #dbeafe; border-top-color: #2563eb; border-radius: 999px; animation: spin 0.9s linear infinite; }
+          .error { width: 28px; height: 28px; margin-bottom: 18px; border-radius: 999px; display: grid; place-items: center; background: #fee2e2; color: #b91c1c; font-weight: 900; }
+          @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+      </head>
+      <body>
+        <main>
+          ${isError ? '<div class="error">!</div>' : '<div class="spinner"></div>'}
+          <h1>${escapeHtml(title)}</h1>
+          <p>${escapeHtml(message)}</p>
+        </main>
+      </body>
+    </html>`);
+  targetWindow.document.close();
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function loadGoogleIdentityScript() {
