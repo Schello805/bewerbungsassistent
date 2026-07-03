@@ -2256,3 +2256,58 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* Final header/start-page polish */
+.topbar {
+  min-height: 52px;
+}
+
+.brand {
+  gap: 12px;
+  font-size: 1.04rem;
+  font-weight: 820;
+}
+
+.brand img {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.app-main {
+  padding-top: 14px;
+}
+
+.create-panel,
+.analysis-panel {
+  min-height: auto;
+}
+
+.create-panel {
+  gap: 10px;
+}
+
+.create-panel h1 {
+  margin-bottom: 10px;
+}
+
+.create-panel label {
+  flex: 0 0 auto;
+}
+
+.create-panel textarea {
+  height: auto;
+  min-height: 220px;
+}
+
+@media (max-width: 680px) {
+  .brand img {
+    width: 42px;
+    height: 42px;
+  }
+
+  .app-main {
+    padding-top: 12px;
+  }
+}
