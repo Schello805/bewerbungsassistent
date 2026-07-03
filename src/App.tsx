@@ -1309,13 +1309,14 @@ function ApplicationShell() {
             </div>
           </article>
 
-          <article className="panel profile-editor-panel">
-            <div className="panel-header">
-              <div>
-                <h2>Profil-Editor</h2>
-                <p className="document-status">{profileEvidenceStatus || 'Qualifikationen ergänzen oder korrigieren. Eine Zeile pro Eintrag.'}</p>
-              </div>
-            </div>
+          <details className="settings-accordion profile-editor-panel" open>
+            <summary>
+              <span>
+                <strong>Profil-Editor</strong>
+                <small>{profileEvidenceStatus || `${profileEvidence.length} Profilpunkte erkannt`}</small>
+              </span>
+            </summary>
+            <div className="accordion-content">
             <textarea
               className="profile-evidence-editor"
               value={profileEvidenceText}
@@ -1327,10 +1328,17 @@ function ApplicationShell() {
             />
             <button type="button" className="button primary" onClick={saveProfileEvidence}>Profil-Ergänzungen speichern</button>
             <ProfileStructureSummary profile={profile} />
-          </article>
+            </div>
+          </details>
 
-          <article className="panel ai-panel">
-            <h2>KI</h2>
+          <details className="settings-accordion ai-panel" open>
+            <summary>
+              <span>
+                <strong>KI & Vorlagen</strong>
+                <small>{provider} · {voice}</small>
+              </span>
+            </summary>
+            <div className="accordion-content">
             <div className="provider-picker" aria-label="KI-Anbieter auswählen">
               {providerOptions.map((option) => (
                 <button
@@ -1409,15 +1417,17 @@ function ApplicationShell() {
             ) : (
               <p className="field-note local-ai-note">Llama lokal nutzt Ollama auf dem Server unter <code>http://localhost:11434</code>. Kein API-Key nötig.</p>
             )}
-          </article>
-
-          <article className="panel integrations-panel">
-            <div className="panel-header">
-              <div>
-                <h2>Google Docs</h2>
-                <p className="document-status">Optionaler Export direkt in Google Docs.</p>
-              </div>
             </div>
+          </details>
+
+          <details className="settings-accordion integrations-panel">
+            <summary>
+              <span>
+                <strong>Google Docs</strong>
+                <small>{googleSetupState.title}</small>
+              </span>
+            </summary>
+            <div className="accordion-content">
             <div className="google-client-box">
               <div className={`setup-check setup-${googleSetupState.level}`}>
                 {googleSetupState.level === 'success' ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
@@ -1453,18 +1463,21 @@ function ApplicationShell() {
                 </a>
               </details>
             </div>
-          </article>
-
-          <article className="panel backup-panel">
-            <div className="panel-header">
-              <div>
-                <h2>Backup</h2>
-                <p className={`document-status backup-feedback backup-${backupStatusType}`}>
-                  {isBackupWorking && <RefreshCw size={14} />}
-                  {backupStatus || 'Stammdaten, Unterlagen, API-Keys und Anschreiben sichern.'}
-                </p>
-              </div>
             </div>
+          </details>
+
+          <details className="settings-accordion backup-panel">
+            <summary>
+              <span>
+                <strong>Backup</strong>
+                <small>{backupStatus || 'Sichern und wiederherstellen'}</small>
+              </span>
+            </summary>
+            <div className="accordion-content">
+              <p className={`document-status backup-feedback backup-${backupStatusType}`}>
+                {isBackupWorking && <RefreshCw size={14} />}
+                {backupStatus || 'Stammdaten, Unterlagen, API-Keys und Anschreiben sichern.'}
+              </p>
             <div className="backup-actions">
               <button type="button" className="button primary" onClick={downloadBackup} disabled={isBackupWorking}>
                 {isBackupWorking ? <RefreshCw size={18} /> : <Download size={18} />}
@@ -1475,20 +1488,28 @@ function ApplicationShell() {
               </button>
               <input ref={backupInputRef} type="file" accept="application/json,.json" onChange={restoreBackup} className="visually-hidden" />
             </div>
-          </article>
+            </div>
+          </details>
 
-          <article className={isUploading ? 'panel upload-panel is-uploading' : 'panel upload-panel'}>
-            <div className="panel-header">
-              <div>
-                <h2>Unterlagen</h2>
-                <p className="document-status">{documentStatus}</p>
-              </div>
-              <button type="button" className="upload-button" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+          <details className={isUploading ? 'settings-accordion upload-panel is-uploading' : 'settings-accordion upload-panel'} open>
+            <summary>
+              <span>
+                <strong>Unterlagen</strong>
+                <small>{documentStatus}</small>
+              </span>
+              <span className="summary-action">
+              <button type="button" className="upload-button" onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                fileInputRef.current?.click();
+              }} disabled={isUploading}>
                 <span className="upload-icon-wrap"><FileUp size={16} /></span>
                 {isUploading ? 'Upload läuft ...' : 'Dateien auswählen'}
               </button>
               <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md,.rtf" multiple onChange={uploadDocument} className="visually-hidden" />
-            </div>
+              </span>
+            </summary>
+            <div className="accordion-content">
             {isUploading && (
               <div className="upload-progress" aria-label="Upload läuft">
                 <span />
@@ -1506,7 +1527,8 @@ function ApplicationShell() {
                 </li>
               ))}
             </ul>
-          </article>
+            </div>
+          </details>
         </section>
         )}
       </main>
