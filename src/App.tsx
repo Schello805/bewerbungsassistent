@@ -21,6 +21,17 @@ type SavedLetter = {
   text?: string;
 };
 
+type ApplicationRecord = {
+  id: string;
+  title: string;
+  company: string;
+  jobInput: string;
+  letterId?: string | null;
+  status: ApplicationStatus;
+  statusUpdatedAt: string;
+  updatedAt: string;
+};
+
 type ProfileDocument = {
   fileName: string;
   type: string;
@@ -65,6 +76,7 @@ type JobDetails = {
 };
 
 type RequestedInfo = 'salary' | 'startDate' | 'availability' | 'reference' | 'documents' | 'motivation';
+type ApplicationStatus = 'Entwurf' | 'Versendet' | 'Zwischenbescheid' | 'Absage' | 'Vorstellungsgespräch';
 type RewriteMode = 'modern' | 'detailed' | 'confident' | 'formal' | 'alternative' | 'shorten';
 type AiCandidate = {
   provider: string;
@@ -81,6 +93,8 @@ const rewriteLabels: Record<RewriteMode, string> = {
   alternative: 'Alternative',
   shorten: 'Kürzen',
 };
+
+const applicationStatuses: ApplicationStatus[] = ['Entwurf', 'Versendet', 'Zwischenbescheid', 'Absage', 'Vorstellungsgespräch'];
 
 const defaultPersonalData: PersonalData = {
   name: 'Michael Schellenberger',
@@ -108,6 +122,7 @@ function App() {
 function ApplicationShell() {
   const [documents, setDocuments] = useState<UploadedDocument[]>([]);
   const [letters, setLetters] = useState<SavedLetter[]>([]);
+  const [applications, setApplications] = useState<ApplicationRecord[]>([]);
   const [profile, setProfile] = useState<ProfileData>({ documents: [], text: '', keywords: [] });
   const [personalData, setPersonalData] = useState<PersonalData>(defaultPersonalData);
   const [jobInput, setJobInput] = useState('');
@@ -132,6 +147,9 @@ function ApplicationShell() {
   const [isApiKeyEditing, setIsApiKeyEditing] = useState(false);
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleClientIdStatus, setGoogleClientIdStatus] = useState('');
+  const [profileEvidenceText, setProfileEvidenceText] = useState('');
+  const [profileEvidenceStatus, setProfileEvidenceStatus] = useState('');
+  const [costEstimate, setCostEstimate] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -145,6 +163,7 @@ function ApplicationShell() {
   const activeCandidate = candidates[Math.min(activeCandidateIndex, Math.max(candidates.length - 1, 0))];
   const profileEvidence = getProfileEvidence(profile);
   const matchItems = useMemo(() => createMatchItems(jobInput, profileEvidence), [jobInput, profileEvidence]);
+  const cvSuggestions = useMemo(() => createCvSuggestions(jobInput, matchItems, profileEvidence), [jobInput, matchItems, profileEvidence]);
   const qualityChecks = useMemo(() => createQualityChecks(draft, jobDetails, profileEvidence), [draft, jobDetails, profileEvidence]);
   const passedQualityChecks = qualityChecks.filter((check) => check.ok).length;
 
@@ -183,6 +202,17 @@ function ApplicationShell() {
     }
   }, []);
 
+  const loadApplications = useCallback(async () => {
+    try {
+      const response = await fetch('/api/applications');
+      if (!response.ok) throw new Error('Bewerbungs-Historie konnte nicht geladen werden.');
+      const data = await response.json() as { applications: ApplicationRecord[] };
+      setApplications(data.applications);
+    } catch (error) {
+      setLetterStatus(error instanceof Error ? error.message : 'Bewerbungs-Historie konnte nicht geladen werden.');
+    }
+  }, []);
+
   const loadSettings = useCallback(async () => {
     try {
       const response = await fetch('/api/settings');
@@ -193,6 +223,7 @@ function ApplicationShell() {
         voice?: string | null;
         apiKeyProviders?: string[];
         googleClientId?: string | null;
+        profileEvidence?: string[];
       };
       if (data.personalData) {
         setPersonalData({ ...defaultPersonalData, ...data.personalData });
@@ -206,6 +237,9 @@ function ApplicationShell() {
       if (data.googleClientId) {
         setGoogleClientId(data.googleClientId);
       }
+      if (Array.isArray(data.profileEvidence)) {
+        setProfileEvidenceText(data.profileEvidence.join('\n'));
+      }
       setApiKeyProviders(Array.isArray(data.apiKeyProviders) ? data.apiKeyProviders : []);
     } catch {
       // Settings are optional; defaults keep the app usable.
@@ -216,7 +250,8 @@ function ApplicationShell() {
     void loadSettings();
     void loadDocuments();
     void loadLetters();
-  }, [loadDocuments, loadLetters, loadSettings]);
+    void loadApplications();
+  }, [loadApplications, loadDocuments, loadLetters, loadSettings]);
 
   useEffect(() => {
     const legacyApiKey = localStorage.getItem(getApiKeyStorageKey(provider));
@@ -237,7 +272,7 @@ function ApplicationShell() {
     void migrateLegacyApiKey();
   }, [apiKeyProviders, provider]);
 
-  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string }) {
+  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string; profileEvidence?: string[] }) {
     await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -285,6 +320,20 @@ function ApplicationShell() {
       setGoogleClientIdStatus(normalizedClientId ? 'Google Client-ID gespeichert.' : 'Google Client-ID entfernt.');
     } catch {
       setGoogleClientIdStatus('Google Client-ID konnte nicht gespeichert werden.');
+    }
+  }
+
+  async function saveProfileEvidence() {
+    const values = profileEvidenceText
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    try {
+      await saveSettings({ profileEvidence: values });
+      await loadProfile();
+      setProfileEvidenceStatus('Profil-Ergänzungen gespeichert.');
+    } catch {
+      setProfileEvidenceStatus('Profil-Ergänzungen konnten nicht gespeichert werden.');
     }
   }
 
@@ -392,7 +441,9 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'KI-Generierung fehlgeschlagen.');
       }
       const data = await response.json() as { text: string };
-      setDraft(cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile, voice })));
+      const nextDraft = cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile, voice }));
+      setDraft(nextDraft);
+      setCostEstimate(estimateAiCost(provider, `${resolvedJobInput}\n${profileEvidence.join('\n')}`, nextDraft));
       setActiveLetterId(null);
     } catch (error) {
       setDraft(createDraft({ personalData, jobDetails, profile, voice }));
@@ -441,6 +492,7 @@ function ApplicationShell() {
       if (firstGood) {
         setDraft(firstGood.text);
         setActiveLetterId(null);
+        setCostEstimate(estimateAiCost(firstGood.provider, `${resolvedJobInput}\n${profileEvidence.join('\n')}`, firstGood.text, cleanedCandidates.length));
       }
       setLetterStatus(firstGood ? 'KI-Vergleich fertig. Du kannst eine Version übernehmen.' : 'Keine KI-Version konnte erstellt werden.');
       window.setTimeout(() => document.getElementById('editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -480,8 +532,10 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'KI-Überarbeitung fehlgeschlagen.');
       }
       const data = await response.json() as { text: string };
-      setDraft(cleanGeneratedLetter(data.text || draft));
+      const nextDraft = cleanGeneratedLetter(data.text || draft);
+      setDraft(nextDraft);
       setActiveLetterId(null);
+      setCostEstimate(estimateAiCost(provider, draft, nextDraft));
       setLetterStatus(`${rewriteLabels[mode]} fertig.`);
     } catch (error) {
       setLetterStatus(error instanceof Error ? error.message : 'KI-Überarbeitung fehlgeschlagen.');
@@ -505,10 +559,44 @@ function ApplicationShell() {
       await loadLetters();
       const data = await response.json() as { letter?: SavedLetter };
       if (data.letter?.id) setActiveLetterId(data.letter.id);
+      if (data.letter?.id) {
+        await saveApplicationRecord(data.letter.id);
+      }
       setLetterStatus(activeLetterId ? 'Änderungen gespeichert.' : 'Fertige Version gespeichert.');
     } catch (error) {
       setLetterStatus(error instanceof Error ? error.message : 'Anschreiben konnte nicht gespeichert werden.');
     }
+  }
+
+  async function saveApplicationRecord(letterId: string) {
+    const response = await fetch('/api/applications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: jobDetails.subject || 'Bewerbung',
+        company: jobDetails.company,
+        jobInput,
+        letterId,
+        status: 'Entwurf',
+      }),
+    });
+    if (response.ok) {
+      await loadApplications();
+    }
+  }
+
+  async function updateApplicationStatus(id: string, status: ApplicationStatus) {
+    const response = await fetch(`/api/applications/${encodeURIComponent(id)}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) {
+      const data = await readApiError(response);
+      setLetterStatus(data.error || 'Status konnte nicht gespeichert werden.');
+      return;
+    }
+    await loadApplications();
   }
 
   async function downloadDocx() {
@@ -789,6 +877,16 @@ function ApplicationShell() {
                 ))}
               </ul>
             </div>
+            <div className="analysis-block">
+              <h3>Lebenslauf optimieren</h3>
+              <ul className="match-list">
+                {cvSuggestions.map((suggestion) => (
+                  <li key={suggestion} className="match-ok">
+                    <strong>{suggestion}</strong>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </aside>
         </section>
 
@@ -834,6 +932,14 @@ function ApplicationShell() {
                 ))}
               </ul>
             </section>
+            {costEstimate && (
+              <section className="quality-panel cost-panel" aria-label="KI Kostenschätzung">
+                <div>
+                  <h3>KI-Kosten</h3>
+                  <p>{costEstimate}</p>
+                </div>
+              </section>
+            )}
             <section className="saved-letters" aria-label="Gespeicherte Anschreiben">
               {candidates.length > 0 && (
                 <div className="candidate-list">
@@ -859,6 +965,7 @@ function ApplicationShell() {
                           <button type="button" className="text-button" onClick={() => {
                             setDraft(activeCandidate.text);
                             setActiveLetterId(null);
+                            setCostEstimate(estimateAiCost(activeCandidate.provider, jobInput, activeCandidate.text, candidates.length));
                             setLetterStatus(`${activeCandidate.provider} übernommen.`);
                           }}>Diese Version übernehmen</button>
                         )}
@@ -893,6 +1000,33 @@ function ApplicationShell() {
                 </ul>
               )}
             </section>
+            <section className="saved-letters application-history" aria-label="Bewerbungs-Historie">
+              <div>
+                <h3>Bewerbungs-Historie</h3>
+                <p>Status manuell aktualisieren. Jeder Statuswechsel erhält automatisch einen Zeitstempel.</p>
+              </div>
+              {applications.length === 0 ? (
+                <p>Noch keine Bewerbung gespeichert.</p>
+              ) : (
+                <ul>
+                  {applications.map((application) => (
+                    <li key={application.id}>
+                      <span>{application.title}</span>
+                      <small>
+                        {application.company ? `${application.company} · ` : ''}
+                        {application.status} seit {new Date(application.statusUpdatedAt).toLocaleString('de-DE')}
+                      </small>
+                      <div className="saved-letter-actions">
+                        <select value={application.status} onChange={(event) => updateApplicationStatus(application.id, event.target.value as ApplicationStatus)}>
+                          {applicationStatuses.map((status) => <option key={status}>{status}</option>)}
+                        </select>
+                        {application.letterId && <button type="button" onClick={() => openLetter(application.letterId || '')}>Anschreiben öffnen</button>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </div>
         </section>
         </>
@@ -912,6 +1046,25 @@ function ApplicationShell() {
               <TextField label="Website" value={personalData.website} onChange={(value) => updatePersonalData('website', value)} />
               <TextField label="Absendeort" value={personalData.location} onChange={(value) => updatePersonalData('location', value)} />
             </div>
+          </article>
+
+          <article className="panel profile-editor-panel">
+            <div className="panel-header">
+              <div>
+                <h2>Profil-Editor</h2>
+                <p className="document-status">{profileEvidenceStatus || 'Qualifikationen ergänzen oder korrigieren. Eine Zeile pro Eintrag.'}</p>
+              </div>
+            </div>
+            <textarea
+              className="profile-evidence-editor"
+              value={profileEvidenceText}
+              onChange={(event) => {
+                setProfileEvidenceText(event.target.value);
+                setProfileEvidenceStatus('Noch nicht gespeichert.');
+              }}
+              placeholder="z. B. VDA 6.3 Auditor&#10;QMB&#10;Lean Management&#10;SAP"
+            />
+            <button type="button" className="button primary" onClick={saveProfileEvidence}>Profil-Ergänzungen speichern</button>
           </article>
 
           <article className="panel ai-panel">
@@ -1203,6 +1356,24 @@ function createMatchItems(jobInput: string, profileEvidence: string[]) {
     .concat(jobInput.trim() ? [] : [{ requirement: 'Stellenanzeige', matches: [] }]);
 }
 
+function createCvSuggestions(jobInput: string, matchItems: Array<{ requirement: string; matches: string[] }>, profileEvidence: string[]) {
+  if (!jobInput.trim()) return ['Stellenanzeige einfügen, dann erscheinen konkrete CV-Vorschläge.'];
+  const suggestions = [
+    ...matchItems
+      .filter((item) => item.matches.length > 0)
+      .map((item) => `${item.requirement}: ${item.matches.slice(0, 2).join(' und ')} im Lebenslauf sichtbarer platzieren.`),
+    ...matchItems
+      .filter((item) => item.matches.length === 0)
+      .map((item) => `${item.requirement}: prüfen, ob passende Erfahrung im Profil ergänzt werden sollte.`),
+  ];
+
+  if (profileEvidence.length > 0) {
+    suggestions.push(`Top-Qualifikationen wie ${profileEvidence.slice(0, 3).join(', ')} im Kurzprofil und bei passenden Stationen nennen.`);
+  }
+
+  return suggestions.slice(0, 5);
+}
+
 function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvidence: string[]) {
   const normalizedDraft = draft.toLowerCase();
   const words = draft.trim().split(/\s+/).filter(Boolean);
@@ -1219,6 +1390,28 @@ function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvide
     { label: 'Keine offenen Platzhalter', ok: !hasPlaceholders },
     { label: 'Schlussformel vorhanden', ok: normalizedDraft.includes('mit freundlichen grüßen') },
   ];
+}
+
+function estimateAiCost(provider: string, inputText: string, outputText: string, requests = 1) {
+  if (provider === 'Llama lokal') return 'Lokale KI: keine API-Kosten.';
+  const inputTokens = estimateTokens(inputText);
+  const outputTokens = estimateTokens(outputText);
+  const prices: Record<string, { input: number; output: number }> = {
+    OpenAI: { input: 0.40, output: 1.60 },
+    'Google Gemini': { input: 0.075, output: 0.30 },
+    Anthropic: { input: 0.80, output: 4.00 },
+    'Mistral AI': { input: 0.20, output: 0.60 },
+    OpenRouter: { input: 0.40, output: 1.60 },
+  };
+  const price = prices[provider] ?? prices.OpenAI;
+  const estimatedUsd = ((inputTokens * price.input) + (outputTokens * price.output)) / 1_000_000 * requests;
+  const estimatedEur = estimatedUsd * 0.93;
+  const requestText = requests > 1 ? ` · ${requests} Abfragen` : '';
+  return `Ca. ${estimatedEur.toLocaleString('de-DE', { style: 'currency', currency: 'EUR', minimumFractionDigits: 4, maximumFractionDigits: 4 })}${requestText} · grob geschätzt (${inputTokens + outputTokens} Tokens je Basislauf).`;
+}
+
+function estimateTokens(text: string) {
+  return Math.max(1, Math.ceil(text.length / 4));
 }
 
 function uniqueValues(values: string[]) {

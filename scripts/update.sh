@@ -5,6 +5,11 @@ APP_NAME="bewerbungsassistent"
 APP_DIR="${APP_DIR:-/opt/bewerbungsassistent}"
 SERVICE_USER="${SERVICE_USER:-bewerbungsassistent}"
 BRANCH="${BRANCH:-main}"
+APP_ONLY=false
+
+if [[ "${1:-}" == "--app-only" ]]; then
+  APP_ONLY=true
+fi
 
 log() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
 success() { printf '\033[1;32m[OK]\033[0m %s\n' "$*"; }
@@ -12,6 +17,9 @@ warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[FEHLER]\033[0m %s\n' "$*" >&2; exit 1; }
 
 require_root() {
+  if [[ "${APP_ONLY}" == true ]]; then
+    return
+  fi
   if [[ "${EUID}" -ne 0 ]]; then
     fail "Bitte als root ausführen, z. B. mit: sudo bash scripts/update.sh"
   fi
@@ -19,7 +27,9 @@ require_root() {
 
 check_installation() {
   [[ -d "${APP_DIR}/.git" ]] || fail "Kein Git-Repository gefunden unter ${APP_DIR}. Erst Installation ausführen."
-  id "${SERVICE_USER}" >/dev/null 2>&1 || fail "Service-User fehlt: ${SERVICE_USER}"
+  if [[ "${APP_ONLY}" != true ]]; then
+    id "${SERVICE_USER}" >/dev/null 2>&1 || fail "Service-User fehlt: ${SERVICE_USER}"
+  fi
   success "Installation gefunden: ${APP_DIR}"
 }
 
@@ -28,21 +38,35 @@ update_repository() {
   git -C "${APP_DIR}" fetch origin "${BRANCH}"
   git -C "${APP_DIR}" checkout "${BRANCH}"
   git -C "${APP_DIR}" pull --ff-only origin "${BRANCH}"
-  chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DIR}"
+  if [[ "${APP_ONLY}" != true ]]; then
+    chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DIR}"
+  fi
   success "Quellcode aktualisiert."
 }
 
 install_dependencies_and_build() {
   log "Installiere/aktualisiere Node-Abhängigkeiten ..."
-  runuser -u "${SERVICE_USER}" -- bash -lc "cd '${APP_DIR}' && npm ci"
+  if [[ "${APP_ONLY}" == true ]]; then
+    cd "${APP_DIR}" && npm ci
+  else
+    runuser -u "${SERVICE_USER}" -- bash -lc "cd '${APP_DIR}' && npm ci"
+  fi
   success "Abhängigkeiten aktuell."
 
   log "Erstelle neuen Produktionsbuild ..."
-  runuser -u "${SERVICE_USER}" -- bash -lc "cd '${APP_DIR}' && npm run build"
+  if [[ "${APP_ONLY}" == true ]]; then
+    cd "${APP_DIR}" && npm run build
+  else
+    runuser -u "${SERVICE_USER}" -- bash -lc "cd '${APP_DIR}' && npm run build"
+  fi
   success "Build erfolgreich."
 }
 
 restart_service() {
+  if [[ "${APP_ONLY}" == true ]]; then
+    success "App-only Update abgeschlossen. Der laufende Serverprozess startet anschließend neu."
+    return
+  fi
   log "Starte Service neu ..."
   systemctl daemon-reload
   systemctl restart "${APP_NAME}.service"

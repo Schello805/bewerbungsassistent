@@ -1197,6 +1197,35 @@ textarea:focus {
   padding: 14px;
 }
 
+.cost-panel {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.profile-editor-panel {
+  gap: 12px;
+}
+
+.profile-evidence-editor {
+  min-height: 150px;
+  max-height: 260px;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.35;
+}
+
+.application-history select {
+  min-width: 190px;
+  min-height: 34px;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.application-history small {
+  color: #475569;
+}
+
 .quality-panel p {
   margin: 3px 0 0;
   color: #64748b;
