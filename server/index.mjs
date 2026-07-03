@@ -50,13 +50,20 @@ db.exec(`
     title TEXT NOT NULL,
     company TEXT NOT NULL,
     job_input TEXT NOT NULL,
+    job_url TEXT NOT NULL DEFAULT '',
     letter_id TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    follow_up_at TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'Entwurf',
     status_updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+ensureColumn('applications', 'job_url', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('applications', 'notes', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('applications', 'follow_up_at', "TEXT NOT NULL DEFAULT ''");
 
 const app = express();
 app.use(express.json({ limit: '120mb' }));
@@ -350,7 +357,8 @@ app.delete('/api/letters/:id', (request, response, next) => {
 app.get('/api/applications', (_request, response, next) => {
   try {
     const applications = db.prepare(`
-      SELECT id, title, company, job_input AS jobInput, letter_id AS letterId, status,
+      SELECT id, title, company, job_input AS jobInput, job_url AS jobUrl, letter_id AS letterId,
+             notes, follow_up_at AS followUpAt, status,
              status_updated_at AS statusUpdatedAt, created_at AS createdAt, updated_at AS updatedAt
       FROM applications
       ORDER BY updated_at DESC
@@ -367,24 +375,55 @@ app.post('/api/applications', (request, response, next) => {
     const title = String(request.body.title || 'Bewerbung').trim();
     const company = String(request.body.company || '').trim();
     const jobInput = String(request.body.jobInput || '').trim();
+    const jobUrl = String(request.body.jobUrl || '').trim();
+    const notes = String(request.body.notes || '').trim();
+    const followUpAt = String(request.body.followUpAt || '').trim();
     const letterId = typeof request.body.letterId === 'string' ? request.body.letterId : null;
     const status = normalizeApplicationStatus(request.body.status || 'Entwurf');
     const id = String(request.body.id || `${now.replaceAll(/[:.]/g, '-')}-${sanitizeFileName(title)}`).trim();
 
     db.prepare(`
-      INSERT INTO applications (id, title, company, job_input, letter_id, status, status_updated_at, created_at, updated_at)
-      VALUES (@id, @title, @company, @jobInput, @letterId, @status, @now, @now, @now)
+      INSERT INTO applications (id, title, company, job_input, job_url, letter_id, notes, follow_up_at, status, status_updated_at, created_at, updated_at)
+      VALUES (@id, @title, @company, @jobInput, @jobUrl, @letterId, @notes, @followUpAt, @status, @now, @now, @now)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         company = excluded.company,
         job_input = excluded.job_input,
+        job_url = @jobUrl,
+        notes = @notes,
+        follow_up_at = @followUpAt,
         letter_id = excluded.letter_id,
+        status = excluded.status,
+        status_updated_at = excluded.status_updated_at,
         updated_at = excluded.updated_at
-    `).run({ id, title, company, jobInput, letterId, status, now });
+    `).run({ id, title, company, jobInput, jobUrl, notes, followUpAt, letterId, status, now });
 
     response.status(201).json({
-      application: { id, title, company, jobInput, letterId, status, statusUpdatedAt: now, createdAt: now, updatedAt: now },
+      application: { id, title, company, jobInput, jobUrl, notes, followUpAt, letterId, status, statusUpdatedAt: now, createdAt: now, updatedAt: now },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/applications/:id', (request, response, next) => {
+  try {
+    const notes = String(request.body.notes || '').trim();
+    const followUpAt = String(request.body.followUpAt || '').trim();
+    const jobUrl = String(request.body.jobUrl || '').trim();
+    const now = new Date().toISOString();
+    const result = db.prepare(`
+      UPDATE applications
+      SET notes = @notes, follow_up_at = @followUpAt, job_url = @jobUrl, updated_at = @now
+      WHERE id = @id
+    `).run({ id: request.params.id, notes, followUpAt, jobUrl, now });
+
+    if (result.changes === 0) {
+      response.status(404).json({ error: 'Bewerbung nicht gefunden.' });
+      return;
+    }
+
+    response.json({ ok: true, notes, followUpAt, jobUrl, updatedAt: now });
   } catch (error) {
     next(error);
   }
@@ -571,6 +610,13 @@ function sanitizeFileName(fileName) {
   return path.basename(fileName).replaceAll(/[^a-zA-Z0-9äöüÄÖÜß._ -]/g, '_');
 }
 
+function ensureColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((entry) => entry.name === column)) {
+    db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+  }
+}
+
 function inferDocumentType(fileName) {
   const normalized = fileName.toLowerCase();
   if (normalized.includes('lebenslauf') || normalized.includes('cv')) return 'Lebenslauf';
@@ -634,7 +680,8 @@ async function createBackup() {
   }));
   const letters = db.prepare('SELECT id, title, text, size, created_at AS createdAt, updated_at AS updatedAt FROM letters ORDER BY updated_at DESC').all();
   const applications = db.prepare(`
-    SELECT id, title, company, job_input AS jobInput, letter_id AS letterId, status,
+    SELECT id, title, company, job_input AS jobInput, job_url AS jobUrl, letter_id AS letterId,
+           notes, follow_up_at AS followUpAt, status,
            status_updated_at AS statusUpdatedAt, created_at AS createdAt, updated_at AS updatedAt
     FROM applications
     ORDER BY updated_at DESC
@@ -713,13 +760,16 @@ async function restoreBackup(backup) {
       if (!application?.id || !application?.title) continue;
       const now = new Date().toISOString();
       db.prepare(`
-        INSERT INTO applications (id, title, company, job_input, letter_id, status, status_updated_at, created_at, updated_at)
-        VALUES (@id, @title, @company, @jobInput, @letterId, @status, @statusUpdatedAt, @createdAt, @updatedAt)
+        INSERT INTO applications (id, title, company, job_input, job_url, letter_id, notes, follow_up_at, status, status_updated_at, created_at, updated_at)
+        VALUES (@id, @title, @company, @jobInput, @jobUrl, @letterId, @notes, @followUpAt, @status, @statusUpdatedAt, @createdAt, @updatedAt)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           company = excluded.company,
           job_input = excluded.job_input,
+          job_url = excluded.job_url,
           letter_id = excluded.letter_id,
+          notes = excluded.notes,
+          follow_up_at = excluded.follow_up_at,
           status = excluded.status,
           status_updated_at = excluded.status_updated_at,
           updated_at = excluded.updated_at
@@ -728,7 +778,10 @@ async function restoreBackup(backup) {
         title: String(application.title),
         company: String(application.company || ''),
         jobInput: String(application.jobInput || ''),
+        jobUrl: String(application.jobUrl || ''),
         letterId: application.letterId || null,
+        notes: String(application.notes || ''),
+        followUpAt: String(application.followUpAt || ''),
         status: normalizeApplicationStatus(application.status),
         statusUpdatedAt: application.statusUpdatedAt || now,
         createdAt: application.createdAt || now,
