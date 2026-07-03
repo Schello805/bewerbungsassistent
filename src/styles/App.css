@@ -799,6 +799,40 @@ textarea:focus {
   font-weight: 900;
 }
 
+.profile-start-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(236, 253, 245, 0.96), rgba(255, 255, 255, 0.9));
+  box-shadow: 0 16px 32px rgba(21, 128, 61, 0.08);
+}
+
+.profile-start-card strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #166534;
+}
+
+.profile-start-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.profile-start-card small {
+  display: block;
+  margin-top: 7px;
+  color: #15803d;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
 .analysis-block {
   display: grid;
   gap: 8px;
@@ -2138,6 +2172,11 @@ textarea:focus {
 }
 
 @media (max-width: 720px) {
+  .profile-start-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .settings-page {
     max-width: none;
   }

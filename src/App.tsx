@@ -155,6 +155,7 @@ function ApplicationShell() {
   const [googleClientIdStatus, setGoogleClientIdStatus] = useState('');
   const [profileEvidenceText, setProfileEvidenceText] = useState('');
   const [profileEvidenceStatus, setProfileEvidenceStatus] = useState('');
+  const [profileAutoFillStatus, setProfileAutoFillStatus] = useState('');
   const [costEstimate, setCostEstimate] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
@@ -279,6 +280,21 @@ function ApplicationShell() {
     void migrateLegacyApiKey();
   }, [apiKeyProviders, provider]);
 
+  useEffect(() => {
+    const recognizedEvidence = getProfileEvidence(profile);
+    if (profileEvidenceText.trim() || recognizedEvidence.length === 0) return;
+
+    const initialEvidence = recognizedEvidence.slice(0, 14);
+    setProfileEvidenceText(initialEvidence.join('\n'));
+    setProfileEvidenceStatus(`${initialEvidence.length} erkannte Profil-Ergänzungen automatisch übernommen.`);
+    setProfileAutoFillStatus(`${initialEvidence.length} erkannte Profilpunkte wurden in den Profil-Editor übernommen.`);
+    void fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileEvidence: initialEvidence }),
+    });
+  }, [profile, profileEvidenceText]);
+
   async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string; profileEvidence?: string[] }) {
     await fetch('/api/settings', {
       method: 'PUT',
@@ -339,6 +355,7 @@ function ApplicationShell() {
       await saveSettings({ profileEvidence: values });
       await loadProfile();
       setProfileEvidenceStatus('Profil-Ergänzungen gespeichert.');
+      setProfileAutoFillStatus('');
     } catch {
       setProfileEvidenceStatus('Profil-Ergänzungen konnten nicht gespeichert werden.');
     }
@@ -892,6 +909,18 @@ function ApplicationShell() {
               <span>{hasApiKey ? provider : 'Lokale Vorlage'}</span>
               <span>{voice}</span>
               {profile.insights?.skills?.[0] && <span>{profile.insights.skills.slice(0, 3).join(' · ')}</span>}
+            </div>
+            <div className="profile-start-card">
+              <div>
+                <strong>Profilbasis</strong>
+                <p>
+                  {profileEvidence.length > 0
+                    ? `${profileEvidence.length} erkannte Profilpunkte stehen für dein Anschreiben bereit.`
+                    : 'Noch keine Profilpunkte erkannt. Lade Unterlagen hoch oder ergänze dein Profil.'}
+                </p>
+                {profileAutoFillStatus && <small>{profileAutoFillStatus}</small>}
+              </div>
+              <button type="button" className="text-button" onClick={() => setView('settings')}>Profil öffnen</button>
             </div>
             <div className="analysis-block">
               <h3>Erkannte Qualifikationen</h3>
