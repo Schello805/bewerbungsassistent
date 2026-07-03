@@ -53,6 +53,15 @@ type ProfileData = {
     education: string[];
     strengths: string[];
   };
+  structured?: {
+    stations: string[];
+    skills: string[];
+    certificates: string[];
+    industries: string[];
+    leadership: string[];
+    quality: string[];
+    tools: string[];
+  };
 };
 
 type PersonalData = {
@@ -82,6 +91,18 @@ type JobDetails = {
 type RequestedInfo = 'salary' | 'startDate' | 'availability' | 'reference' | 'documents' | 'motivation';
 type ApplicationStatus = 'Entwurf' | 'Versendet' | 'Zwischenbescheid' | 'Absage' | 'Vorstellungsgespräch';
 type RewriteMode = 'modern' | 'detailed' | 'confident' | 'formal' | 'alternative' | 'shorten';
+type RecipientDraft = {
+  company: string;
+  contact: string;
+  address: string;
+};
+type PendingExportAction = 'save' | 'docx' | 'google' | null;
+type GoogleSetupState = {
+  level: 'success' | 'warning' | 'error';
+  title: string;
+  message: string;
+};
+type ApiKeyStorageMode = 'server' | 'session';
 type AiCandidate = {
   provider: string;
   text: string;
@@ -157,6 +178,7 @@ function ApplicationShell() {
   const [apiKeyProviders, setApiKeyProviders] = useState<string[]>([]);
   const [apiKeyStatus, setApiKeyStatus] = useState('');
   const [isApiKeyEditing, setIsApiKeyEditing] = useState(false);
+  const [apiKeyStorageMode, setApiKeyStorageMode] = useState<ApiKeyStorageMode>('server');
   const [googleClientId, setGoogleClientId] = useState('');
   const [googleClientIdInput, setGoogleClientIdInput] = useState('');
   const [googleClientIdStatus, setGoogleClientIdStatus] = useState('');
@@ -165,6 +187,8 @@ function ApplicationShell() {
   const [profileEvidenceStatus, setProfileEvidenceStatus] = useState('');
   const [profileAutoFillStatus, setProfileAutoFillStatus] = useState('');
   const [costEstimate, setCostEstimate] = useState('');
+  const [recipientDraft, setRecipientDraft] = useState<RecipientDraft>({ company: '', contact: '', address: '' });
+  const [pendingExportAction, setPendingExportAction] = useState<PendingExportAction>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -176,6 +200,7 @@ function ApplicationShell() {
   const currentProviderHasStoredKey = apiKeyProviders.includes(provider);
   const apiKeyDisplayValue = apiKey || (!isApiKeyEditing && currentProviderHasStoredKey ? '••••••••••••' : '');
   const googleClientIdDisplayValue = googleClientIdInput || (!isGoogleClientIdEditing && googleClientId ? '••••••••••••' : '');
+  const googleSetupState = useMemo(() => getGoogleSetupState(googleClientId), [googleClientId]);
   const activeCandidate = candidates[Math.min(activeCandidateIndex, Math.max(candidates.length - 1, 0))];
   const bestCandidateIndex = getBestCandidateIndex(candidates);
   const profileEvidence = getProfileEvidence(profile);
@@ -241,6 +266,7 @@ function ApplicationShell() {
         apiKeyProviders?: string[];
         googleClientId?: string | null;
         profileEvidence?: string[];
+        apiKeyStorageMode?: ApiKeyStorageMode | null;
       };
       if (data.personalData) {
         const nextPersonalData = { ...defaultPersonalData, ...data.personalData };
@@ -261,6 +287,9 @@ function ApplicationShell() {
       }
       if (Array.isArray(data.profileEvidence)) {
         setProfileEvidenceText(data.profileEvidence.join('\n'));
+      }
+      if (data.apiKeyStorageMode === 'session' || data.apiKeyStorageMode === 'server') {
+        setApiKeyStorageMode(data.apiKeyStorageMode);
       }
       setApiKeyProviders(Array.isArray(data.apiKeyProviders) ? data.apiKeyProviders : []);
     } catch {
@@ -309,7 +338,7 @@ function ApplicationShell() {
     });
   }, [profile, profileEvidenceText]);
 
-  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string; profileEvidence?: string[] }) {
+  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string; profileEvidence?: string[]; apiKeyStorageMode?: ApiKeyStorageMode }) {
     await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -403,6 +432,12 @@ function ApplicationShell() {
   async function saveApiKey() {
     if (!apiKey.trim()) return;
 
+    if (apiKeyStorageMode === 'session') {
+      setApiKeyStatus('API-Key nur für diese Sitzung aktiv. Beim Neuladen ist er weg.');
+      setIsApiKeyEditing(false);
+      return;
+    }
+
     try {
       await saveSettings({ provider, apiKey });
       setApiKeyProviders((current) => current.includes(provider) ? current : [...current, provider]);
@@ -424,6 +459,14 @@ function ApplicationShell() {
     } catch {
       setApiKeyStatus('API-Key konnte nicht entfernt werden.');
     }
+  }
+
+  function updateApiKeyStorageMode(value: ApiKeyStorageMode) {
+    setApiKeyStorageMode(value);
+    void saveSettings({ apiKeyStorageMode: value });
+    setApiKeyStatus(value === 'session'
+      ? 'Sitzungsmodus aktiv: neue Keys werden nicht in der Datenbank gespeichert.'
+      : 'Servermodus aktiv: API-Keys werden verschlüsselt in der Datenbank gespeichert.');
   }
 
   async function uploadDocument(event: ChangeEvent<HTMLInputElement>) {
@@ -612,12 +655,17 @@ function ApplicationShell() {
   }
 
   async function saveFinalLetter() {
+    if (!ensureRecipientCompleted('save')) return;
+    await performSaveFinalLetter();
+  }
+
+  async function performSaveFinalLetter(textOverride = draft) {
     setLetterStatus('Fertige Version wird gespeichert ...');
     try {
       const response = await fetch(activeLetterId ? `/api/letters/${encodeURIComponent(activeLetterId)}` : '/api/letters', {
         method: activeLetterId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: jobDetails.subject || 'anschreiben', text: draft }),
+        body: JSON.stringify({ title: jobDetails.subject || 'anschreiben', text: textOverride }),
       });
       if (!response.ok) {
         const data = await response.json() as { error?: string };
@@ -687,8 +735,13 @@ function ApplicationShell() {
   }
 
   async function downloadDocx() {
+    if (!ensureRecipientCompleted('docx')) return;
+    await performDownloadDocx();
+  }
+
+  async function performDownloadDocx(textOverride = draft) {
     const { AlignmentType, BorderStyle, Document, Packer, Paragraph, TextRun } = await import('docx');
-    const lines = draft.split('\n');
+    const lines = textOverride.split('\n');
     const subjectIndex = lines.findIndex((line) => line.trim().toLowerCase().startsWith('bewerbung'));
     const dateIndex = lines.findIndex((line) => /\b\d{2}\.\d{2}\.\d{4}\b/.test(line));
     const doc = new Document({
@@ -734,12 +787,17 @@ function ApplicationShell() {
   }
 
   async function openGoogleDocs() {
-    if (!draft.trim()) return;
+    if (!ensureRecipientCompleted('google')) return;
+    await performOpenGoogleDocs();
+  }
+
+  async function performOpenGoogleDocs(textOverride = draft) {
+    if (!textOverride.trim()) return;
     setIsGoogleLoading(true);
     let documentWindow: Window | null = null;
     try {
       if (!googleClientId.trim()) {
-        await navigator.clipboard.writeText(draft);
+        await navigator.clipboard.writeText(textOverride);
         setLetterStatus('Google OAuth Client-ID fehlt. Text wurde kopiert, aber ein gefülltes Google Doc braucht die gespeicherte Client-ID.');
         return;
       }
@@ -781,7 +839,7 @@ function ApplicationShell() {
           authorization: `Bearer ${accessToken}`,
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ requests: buildGoogleDocsRequests(draft) }),
+        body: JSON.stringify({ requests: buildGoogleDocsRequests(textOverride) }),
       });
       if (!insertResponse.ok) throw new Error(await readGoogleError(insertResponse, 'Text konnte nicht in Google Docs eingefügt werden.'));
       const documentUrl = `https://docs.google.com/document/d/${document.documentId}/edit`;
@@ -814,6 +872,25 @@ function ApplicationShell() {
     if (!response.ok) return input;
     const data = await response.json() as { job?: { title?: string; text?: string; url?: string } };
     return [data.job?.title, data.job?.url, data.job?.text].filter(Boolean).join('\n\n') || input;
+  }
+
+  function ensureRecipientCompleted(action: Exclude<PendingExportAction, null>) {
+    if (!draft.trim() || !needsRecipientCompletion(draft)) return true;
+    setRecipientDraft(createRecipientDraftFromText(draft, jobDetails));
+    setPendingExportAction(action);
+    setLetterStatus('Bitte Empfängerdaten ergänzen, damit kein XXX im Anschreiben bleibt.');
+    return false;
+  }
+
+  async function applyRecipientAssistant() {
+    const nextDraft = replaceRecipientPlaceholders(draft, recipientDraft);
+    const action = pendingExportAction;
+    setDraft(nextDraft);
+    setPendingExportAction(null);
+    setLetterStatus('Empfängerdaten übernommen.');
+    if (action === 'save') await performSaveFinalLetter(nextDraft);
+    if (action === 'docx') await performDownloadDocx(nextDraft);
+    if (action === 'google') await performOpenGoogleDocs(nextDraft);
   }
 
   async function openLetter(id: string) {
@@ -1249,6 +1326,7 @@ function ApplicationShell() {
               placeholder="z. B. VDA 6.3 Auditor&#10;QMB&#10;Lean Management&#10;SAP"
             />
             <button type="button" className="button primary" onClick={saveProfileEvidence}>Profil-Ergänzungen speichern</button>
+            <ProfileStructureSummary profile={profile} />
           </article>
 
           <article className="panel ai-panel">
@@ -1271,14 +1349,37 @@ function ApplicationShell() {
             </div>
             <div className="settings-grid">
               <label>
-                Stil
+                Anschreiben-Vorlage
                 <select value={voice} onChange={(event) => updateVoice(event.target.value)}>
                   {voiceOptions.map((option) => <option key={option}>{option}</option>)}
                 </select>
               </label>
             </div>
+            <div className="template-grid" aria-label="Anschreiben-Vorlagen">
+              {voiceOptions.map((option) => (
+                <button key={option} type="button" className={voice === option ? 'template-chip active' : 'template-chip'} onClick={() => updateVoice(option)}>
+                  {option}
+                </button>
+              ))}
+            </div>
             {providerNeedsApiKey ? (
               <>
+                <div className="security-mode-box">
+                  <strong>Sicherheit</strong>
+                  <div className="segmented-options">
+                    <button type="button" className={apiKeyStorageMode === 'server' ? 'active' : ''} onClick={() => updateApiKeyStorageMode('server')}>
+                      Verschlüsselt speichern
+                    </button>
+                    <button type="button" className={apiKeyStorageMode === 'session' ? 'active' : ''} onClick={() => updateApiKeyStorageMode('session')}>
+                      Nur Sitzung
+                    </button>
+                  </div>
+                  <p className="field-note">
+                    {apiKeyStorageMode === 'server'
+                      ? 'API-Keys werden verschlüsselt auf dem Server gespeichert und sind für alle Geräte nutzbar.'
+                      : 'Neue API-Keys bleiben nur bis zum Neuladen im Browser aktiv.'}
+                  </p>
+                </div>
                 <label className="api-field">
                   <span><KeyRound size={18} /> API-Key</span>
                   <input
@@ -1318,6 +1419,13 @@ function ApplicationShell() {
               </div>
             </div>
             <div className="google-client-box">
+              <div className={`setup-check setup-${googleSetupState.level}`}>
+                {googleSetupState.level === 'success' ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
+                <span>
+                  <strong>{googleSetupState.title}</strong>
+                  <small>{googleSetupState.message}</small>
+                </span>
+              </div>
               <TextField label="Google OAuth Client-ID" value={googleClientIdDisplayValue} onChange={updateGoogleClientId} onFocus={startGoogleClientIdEditing} />
               <div className="google-client-actions">
                 <p className="field-note">
@@ -1404,6 +1512,35 @@ function ApplicationShell() {
       </main>
 
       <Footer />
+      {pendingExportAction && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="recipient-modal" role="dialog" aria-modal="true" aria-labelledby="recipient-modal-title">
+            <div>
+              <p className="eyebrow">Empfänger prüfen</p>
+              <h2 id="recipient-modal-title">Empfängerdaten ergänzen</h2>
+              <p className="document-status">Vor Speichern oder Export bitte offene XXX-Daten ersetzen.</p>
+            </div>
+            <div className="recipient-form-grid">
+              <TextField label="Unternehmen" value={recipientDraft.company} onChange={(value) => setRecipientDraft((current) => ({ ...current, company: value }))} />
+              <TextField label="Ansprechpartner" value={recipientDraft.contact} onChange={(value) => setRecipientDraft((current) => ({ ...current, contact: value }))} />
+              <label>
+                Adresse
+                <textarea
+                  value={recipientDraft.address}
+                  onChange={(event) => setRecipientDraft((current) => ({ ...current, address: event.target.value }))}
+                  placeholder="Straße&#10;PLZ Ort"
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="button secondary" onClick={() => setPendingExportAction(null)}>Abbrechen</button>
+              <button type="button" className="button primary" onClick={applyRecipientAssistant} disabled={!recipientDraft.company.trim()}>
+                Übernehmen und fortfahren
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -1436,6 +1573,37 @@ function LetterPreview({ text }: { text: string }) {
         )}
       </div>
     </aside>
+  );
+}
+
+function ProfileStructureSummary({ profile }: { profile: ProfileData }) {
+  const structured = profile.structured;
+  const groups = [
+    ['Stationen', structured?.stations ?? []],
+    ['Skills', structured?.skills ?? []],
+    ['Zertifikate', structured?.certificates ?? []],
+    ['Branchen', structured?.industries ?? []],
+    ['Führung', structured?.leadership ?? []],
+    ['QM / Audit', structured?.quality ?? []],
+    ['Tools', structured?.tools ?? []],
+  ] as const;
+  const visibleGroups = groups.filter(([, values]) => values.length > 0);
+
+  if (visibleGroups.length === 0) {
+    return <p className="field-note">Noch keine strukturierte Profilanalyse erkannt.</p>;
+  }
+
+  return (
+    <div className="profile-structure-grid" aria-label="Strukturierte Profilanalyse">
+      {visibleGroups.map(([label, values]) => (
+        <section key={label}>
+          <strong>{label}</strong>
+          <div>
+            {values.slice(0, 8).map((value) => <span key={value}>{value}</span>)}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -1575,12 +1743,20 @@ function capitalizeFirst(value: string) {
 }
 
 function getProfileEvidence(profile: ProfileData) {
+  const structured = profile.structured;
   return uniqueValues([
     ...(profile.evidence ?? []),
     ...(profile.insights?.skills ?? []),
     ...(profile.insights?.roles ?? []),
     ...(profile.insights?.education ?? []),
     ...(profile.insights?.strengths ?? []),
+    ...(structured?.stations ?? []),
+    ...(structured?.skills ?? []),
+    ...(structured?.certificates ?? []),
+    ...(structured?.industries ?? []),
+    ...(structured?.leadership ?? []),
+    ...(structured?.quality ?? []),
+    ...(structured?.tools ?? []),
   ]).filter((value) => value.length >= 3).slice(0, 18);
 }
 
@@ -1626,6 +1802,15 @@ function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvide
   const normalizedDraft = draft.toLowerCase();
   const words = draft.trim().split(/\s+/).filter(Boolean);
   const evidenceHits = profileEvidence.filter((item) => normalizedDraft.includes(item.toLowerCase())).length;
+  const repeatedPhrases = findRepeatedPhrases(draft);
+  const genericPhraseHits = [
+    'spricht mich sehr an',
+    'team konkret unterstützen',
+    'neue herausforderung',
+    'schnell in neue aufgaben einzuarbeiten',
+    'mit großem interesse',
+  ].filter((phrase) => normalizedDraft.includes(phrase)).length;
+  const hasConcreteExample = /\b(vda\s*6\.3|iso\s*9001|qmb|audit|kennzahl|sap|lean|kvp|kaizen|fmea|8d|power bi|projekt|prozess)/i.test(draft);
   const placeholderMatches = draft.match(/\bXXX\b|\[[^\]]+\]/g) ?? [];
   const hasPlaceholders = placeholderMatches.length > 0;
   const hasRecipientPlaceholder = /XXX Unternehmen|XXX Ansprechpartner|Empfänger bitte prüfen/i.test(draft);
@@ -1645,8 +1830,24 @@ function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvide
     { label: 'Mindestens 3 Profilbelege', ok: evidenceHits >= 3, hint: `Aktuell erkannt: ${evidenceHits}. Mehr konkrete Qualifikationen aus dem Profil einbauen.` },
     { label: 'Stellenbezug vorhanden', ok: hasJobReference, hint: 'Die konkrete Position sollte im Einstieg oder Matching-Absatz vorkommen.' },
     { label: 'Empfänger und Platzhalter vollständig', ok: !hasPlaceholders, hint: placeholderHint },
+    { label: 'Konkrete Beispiele vorhanden', ok: hasConcreteExample, hint: 'Mindestens ein konkretes Beispiel, Zertifikat, Tool oder methodischer Bezug sollte sichtbar sein.' },
+    { label: 'Nicht zu generisch', ok: genericPhraseHits <= 2, hint: 'Der Text nutzt noch zu viele Standardformulierungen. Besser konkreter und persönlicher formulieren.' },
+    { label: 'Keine auffälligen Wiederholungen', ok: repeatedPhrases.length === 0, hint: `Wiederholung prüfen: ${repeatedPhrases.slice(0, 2).join(', ')}` },
     { label: 'Schlussformel vorhanden', ok: normalizedDraft.includes('mit freundlichen grüßen'), hint: 'Die Schlussformel „Mit freundlichen Grüßen“ fehlt.' },
   ];
+}
+
+function findRepeatedPhrases(text: string) {
+  const words = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((word) => word.length > 3);
+  const counts = new Map<string, number>();
+  for (let index = 0; index <= words.length - 3; index += 1) {
+    const phrase = words.slice(index, index + 3).join(' ');
+    counts.set(phrase, (counts.get(phrase) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= 3)
+    .map(([phrase]) => phrase)
+    .slice(0, 4);
 }
 
 function evaluateCandidate(text: string, jobDetails: JobDetails, profileEvidence: string[]) {
@@ -1899,6 +2100,81 @@ function normalizeGoogleClientId(value: string) {
 
 function isValidGoogleClientId(value: string) {
   return /^[0-9a-zA-Z_-]+\.apps\.googleusercontent\.com$/.test(value);
+}
+
+function getGoogleSetupState(clientId: string): GoogleSetupState {
+  const normalizedClientId = normalizeGoogleClientId(clientId);
+  if (!normalizedClientId) {
+    return {
+      level: 'error',
+      title: 'Google nicht eingerichtet',
+      message: 'Für gefüllte Google Docs fehlt die OAuth Client-ID.',
+    };
+  }
+  if (!isValidGoogleClientId(normalizedClientId)) {
+    return {
+      level: 'error',
+      title: 'Client-ID ungültig',
+      message: 'Die Client-ID muss vollständig sein und auf .apps.googleusercontent.com enden.',
+    };
+  }
+  return {
+    level: 'success',
+    title: 'OAuth Client-ID gespeichert',
+    message: `JavaScript-Quelle in Google eintragen: ${window.location.origin}. Google Docs API muss im selben Projekt aktiv sein.`,
+  };
+}
+
+function needsRecipientCompletion(text: string) {
+  return /XXX Unternehmen|XXX Ansprechpartner|Empfänger bitte prüfen|\bXXX\b/i.test(text);
+}
+
+function createRecipientDraftFromText(text: string, jobDetails: JobDetails): RecipientDraft {
+  const recipientLines = extractRecipientLines(text);
+  return {
+    company: cleanRecipientLine(recipientLines.find((line) => !/ansprechpartner|adresse|xxx/i.test(line)) || jobDetails.company || ''),
+    contact: cleanRecipientLine(recipientLines.find((line) => /ansprechpartner|herr|frau|xxx/i.test(line)) || jobDetails.contact || ''),
+    address: jobDetails.address || recipientLines.slice(2).filter((line) => !/xxx/i.test(line)).join('\n'),
+  };
+}
+
+function extractRecipientLines(text: string) {
+  const lines = text.split('\n').map((line) => line.trim());
+  const separatorIndex = lines.findIndex((line) => line.includes('────'));
+  const dateIndex = lines.findIndex((line, index) => index > separatorIndex && /\b\d{1,2}\.\d{1,2}\.\d{4}\b/.test(line));
+  if (separatorIndex === -1 || dateIndex === -1 || dateIndex <= separatorIndex) return [];
+  return lines.slice(separatorIndex + 1, dateIndex).filter(Boolean);
+}
+
+function cleanRecipientLine(value: string) {
+  return value.replace(/^XXX\s*/i, '').trim();
+}
+
+function replaceRecipientPlaceholders(text: string, recipient: RecipientDraft) {
+  const lines = text.split('\n');
+  const separatorIndex = lines.findIndex((line) => line.includes('────'));
+  const dateIndex = lines.findIndex((line, index) => index > separatorIndex && /\b\d{1,2}\.\d{1,2}\.\d{4}\b/.test(line));
+  const recipientBlock = [
+    recipient.company.trim() || 'XXX Unternehmen',
+    recipient.contact.trim(),
+    ...recipient.address.split('\n').map((line) => line.trim()).filter(Boolean),
+  ].filter(Boolean);
+
+  if (separatorIndex !== -1 && dateIndex !== -1 && dateIndex > separatorIndex) {
+    return [
+      ...lines.slice(0, separatorIndex + 1),
+      '',
+      ...recipientBlock,
+      '',
+      '',
+      ...lines.slice(dateIndex),
+    ].join('\n').replace(/\n{4,}/g, '\n\n\n').trim();
+  }
+
+  return text
+    .replace(/XXX Unternehmen/i, recipient.company.trim() || 'XXX Unternehmen')
+    .replace(/XXX Ansprechpartner/i, recipient.contact.trim() || '')
+    .replace(/\bEmpfänger bitte prüfen\b/i, recipientBlock.join('\n'));
 }
 
 async function readGoogleError(response: Response, fallback: string) {

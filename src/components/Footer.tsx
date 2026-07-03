@@ -7,6 +7,7 @@ export function Footer() {
   const [status, setStatus] = useState('Update prüfen');
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [logs, setLogs] = useState<Array<{ at: string; message: string }>>([]);
 
   useEffect(() => {
     checkUpdate(false);
@@ -16,8 +17,9 @@ export function Footer() {
     if (showStatus) setStatus('Prüfe Update ...');
     try {
       const response = await fetch('/api/update-status');
-      const data = await response.json() as { updateAvailable?: boolean; behind?: number; error?: string };
+      const data = await response.json() as { updateAvailable?: boolean; behind?: number; error?: string; logs?: Array<{ at: string; message: string }> };
       setUpdateAvailable(Boolean(data.updateAvailable));
+      setLogs(data.logs ?? []);
       setStatus(data.updateAvailable ? `Update verfügbar (${data.behind})` : 'Aktuell');
     } catch {
       if (showStatus) setStatus('Updateprüfung nicht möglich');
@@ -29,8 +31,9 @@ export function Footer() {
     setStatus('Update läuft ...');
     try {
       const response = await fetch('/api/update', { method: 'POST' });
-      const data = await response.json() as { message?: string; error?: string; updated?: boolean };
+      const data = await response.json() as { message?: string; error?: string; updated?: boolean; logs?: Array<{ at: string; message: string }> };
       if (!response.ok) throw new Error(data.error || 'Update fehlgeschlagen.');
+      setLogs(data.logs ?? logs);
       setStatus(data.message || 'Update abgeschlossen.');
       if (data.updated) {
         window.setTimeout(() => window.location.reload(), 4000);
@@ -59,6 +62,13 @@ export function Footer() {
           <GithubIcon /> GitHub
         </a>
       </nav>
+      {logs.length > 0 && (
+        <div className="footer-update-log" aria-label="Update-Protokoll">
+          {logs.slice(-4).map((log) => (
+            <span key={`${log.at}-${log.message}`}>{new Date(log.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} · {log.message}</span>
+          ))}
+        </div>
+      )}
     </footer>
   );
 }

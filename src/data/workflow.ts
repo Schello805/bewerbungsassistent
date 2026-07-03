@@ -5,6 +5,12 @@ export const voiceOptions = [
   'Formell und traditionell',
   'Direkt und selbstbewusst',
   'Warm und persönlich',
+  'Konservativ',
+  'Modern',
+  'Führungsstark',
+  'Kurz',
+  'Ausführlich',
+  'Initiativbewerbung',
 ];
 
 export const providerOptions = ['OpenAI', 'Google Gemini', 'Anthropic', 'Mistral AI', 'OpenRouter', 'Llama lokal'];

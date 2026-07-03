@@ -94,14 +94,14 @@ Der Server lauscht standardmäßig auf allen Netzwerkinterfaces (`0.0.0.0`). Dad
 
 ```text
 datenbasis/   hochgeladene Unterlagen
-data/         SQLite-Datenbank mit Stammdaten, API-Keys und gespeicherten Anschreiben
+data/         SQLite-Datenbank, serverlokaler Schlüssel und gespeicherte Anschreiben
 ```
 
 Persönliche Dateien in `datenbasis/` und SQLite-Dateien in `data/` werden nicht in das Repository übernommen. Nur `.gitkeep`-Dateien halten die Ordnerstruktur vor.
 
-API-Keys werden zentral in der lokalen SQLite-Datenbank gespeichert, damit die App im lokalen Netzwerk von mehreren Geräten genutzt werden kann. Schütze Server, Datenbankdatei und Backups vor unbefugtem Zugriff.
+API-Keys können wahlweise nur für die aktuelle Browser-Sitzung genutzt oder serverseitig verschlüsselt gespeichert werden. Für die Verschlüsselung legt die App beim ersten Start `data/secret.key` an. Schütze Server, Datenbankdatei, Schlüsseldatei und Backups vor unbefugtem Zugriff.
 
-Backups können direkt in der App unter `Einstellungen` heruntergeladen und wieder eingespielt werden. Die Backup-Datei enthält Stammdaten, Unterlagen, gespeicherte Anschreiben, Einstellungen und API-Keys.
+Backups können direkt in der App unter `Einstellungen` heruntergeladen und wieder eingespielt werden. Die Backup-Datei enthält Stammdaten, Unterlagen, gespeicherte Anschreiben und Einstellungen. Serverseitig gespeicherte API-Keys liegen in der Datenbank verschlüsselt vor.
 
 Für `Llama lokal` wird ein laufender Ollama-Server erwartet. Standard: `OLLAMA_URL=http://127.0.0.1:11434/api/generate` und `OLLAMA_MODEL=llama3.1`.
 
@@ -119,6 +119,8 @@ http://SERVER-IP:5173
 Es wird die Client-ID benötigt, nicht der Clientschlüssel.
 
 Zusätzlich muss im selben Google-Cloud-Projekt unter `APIs & Dienste → Bibliothek` die `Google Docs API` aktiviert sein. Nach der Aktivierung kann es einige Minuten dauern, bis Google die Änderung übernimmt.
+
+Die Einstellungen zeigen eine Google-Ampel. Sie prüft lokal, ob eine Client-ID vorhanden und formal gültig ist. Wenn Google beim Export meldet, dass die Docs API deaktiviert ist, zeigt die App den passenden Aktivierungslink zum Projekt an.
 
 ## Entwicklung
 
