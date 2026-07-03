@@ -426,7 +426,7 @@ function ApplicationShell() {
       const resolvedJobDetails = extractJobDetails(resolvedJobInput);
 
       if (!hasApiKey) {
-        setDraft(createDraft({ personalData, jobDetails: resolvedJobDetails, profile, voice }));
+        setDraft(createDraft({ personalData, jobDetails: resolvedJobDetails, profile }));
         setLetterStatus('Kein API-Key eingetragen. Lokale Vorlage erstellt.');
         return;
       }
@@ -448,12 +448,12 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'KI-Generierung fehlgeschlagen.');
       }
       const data = await response.json() as { text: string };
-      const nextDraft = cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile, voice }));
+      const nextDraft = cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile }));
       setDraft(nextDraft);
       setCostEstimate(estimateAiCost(provider, `${resolvedJobInput}\n${profileEvidence.join('\n')}`, nextDraft));
       setActiveLetterId(null);
     } catch (error) {
-      setDraft(createDraft({ personalData, jobDetails, profile, voice }));
+      setDraft(createDraft({ personalData, jobDetails, profile }));
       setLetterStatus(error instanceof Error ? `KI nicht verfügbar: ${error.message}` : 'KI nicht verfügbar. Lokale Vorlage erstellt.');
     } finally {
       setIsGenerating(false);
@@ -1366,7 +1366,7 @@ function extractJobDetails(input: string): JobDetails {
   };
 }
 
-function createDraft({ personalData, jobDetails, profile, voice }: { personalData: PersonalData; jobDetails: JobDetails; profile: ProfileData; voice: string }) {
+function createDraft({ personalData, jobDetails, profile }: { personalData: PersonalData; jobDetails: JobDetails; profile: ProfileData }) {
   const date = new Intl.DateTimeFormat('de-DE').format(new Date());
   const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';

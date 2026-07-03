@@ -1,6 +1,6 @@
 # Bewerbungsassistent
 
-Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bleiben auf dem eigenen System, hochgeladene Dokumente werden lokal abgelegt.
+Lokale Netzwerk-App zum Erstellen, Vergleichen, Bearbeiten und Verwalten von Bewerbungsanschreiben. Unterlagen, Stammdaten, Einstellungen, API-Keys und gespeicherte Anschreiben liegen zentral auf dem eigenen Server in SQLite und lokalen Dateien.
 
 ## Funktionen
 
@@ -13,14 +13,19 @@ Lokale App zum Erstellen und Bearbeiten von Bewerbungsanschreiben. Unterlagen bl
 - Stellenanzeigen-Link serverseitig auslesen
 - Anschreiben per OpenAI, Gemini, Anthropic, Mistral, OpenRouter oder lokalem Llama/Ollama erzeugen
 - mehrere KI-Anbieter vergleichen und die beste Version übernehmen
+- KI-Vergleich mit Bewertung, kurzen Gründen und grober Kostenschätzung
 - Bewerbungsunterlagen strukturiert nach Skills, Rollen, Ausbildung und Stärken analysieren
 - Anschreiben mit Absenderdaten, Empfängerblock, Betreff und Schlussformel erstellen
 - gewünschte Angaben wie Wunschgehalt, Eintrittstermin oder Referenznummer als Platzhalter erkennen
+- Qualitätscheck für Betreff, Empfänger, Platzhalter, Länge und Profilbezug
 - Anschreiben direkt bearbeiten
 - fertige Versionen zentral in SQLite speichern
+- Bewerbungshistorie mit Status, Job-Link, Notizen und Wiedervorlage
 - DIN-A4-Vorschau neben dem Editor anzeigen
 - DOCX herunterladen, Text kopieren oder per Google OAuth direkt in Google Docs erstellen
 - gespeicherte Anschreiben öffnen, weiterbearbeiten und löschen
+- Backup, Export und Restore für Datenbank, Unterlagen und Einstellungen
+- Update-Prüfung und Update-Button im Footer
 
 ## Installation auf Debian 13 oder Ubuntu 24.04
 
@@ -37,12 +42,20 @@ Das Installationsscript führt die Einrichtung vollständig aus:
 - Abhängigkeiten installieren
 - Produktionsbuild erstellen
 - systemd-Service einrichten und starten
+- Healthcheck ausführen
 - lokale URL und Netzwerk-URL ausgeben
 
 ### Optionale Parameter
 
 ```bash
 sudo APP_DIR=/opt/bewerbungsassistent PORT=5173 SERVICE_USER=bewerbungsassistent bash scripts/install.sh
+```
+
+Weitere optionale Variablen:
+
+```bash
+REPO_URL=https://github.com/Schello805/bewerbungsassistent.git
+NODE_MAJOR=22
 ```
 
 ## Update
@@ -59,7 +72,10 @@ Das Updatescript führt automatisch aus:
 - Abhängigkeiten aktualisieren
 - Produktionsbuild neu erstellen
 - systemd-Service neu starten
+- Healthcheck ausführen
 - Status und URL ausgeben
+
+In der Webapp kann zusätzlich der Update-Button im Footer genutzt werden. Dafür muss die App aus einem Git-Checkout laufen und Zugriff auf das Repository haben. Nach einem erfolgreichen Update startet der Serverprozess neu.
 
 ## Betrieb
 
@@ -67,6 +83,7 @@ Das Updatescript führt automatisch aus:
 systemctl status bewerbungsassistent --no-pager
 journalctl -u bewerbungsassistent -f
 systemctl restart bewerbungsassistent
+sudo bash /opt/bewerbungsassistent/scripts/update.sh
 ```
 
 Standard-Port: `5173`
@@ -90,14 +107,28 @@ Für `Llama lokal` wird ein laufender Ollama-Server erwartet. Standard: `OLLAMA_
 
 Für direktes Erstellen in Google Docs muss in den Einstellungen eine Google OAuth Client-ID hinterlegt werden. Ohne Client-ID öffnet die App `docs.new` und kopiert den Text in die Zwischenablage.
 
+### Google OAuth
+
+Für die Google-Docs-Integration wird eine OAuth Client-ID vom Typ Webanwendung benötigt. In der Google Cloud Console muss die tatsächlich genutzte App-Adresse als autorisierte JavaScript-Quelle eingetragen werden, zum Beispiel:
+
+```text
+http://localhost:5173
+http://SERVER-IP:5173
+```
+
+Es wird die Client-ID benötigt, nicht der Clientschlüssel.
+
 ## Entwicklung
 
 ```bash
 npm install
 npm run dev
+npm run verify
 npm run lint
 npm run build
 ```
+
+Die Entwicklungs-App läuft standardmäßig unter `http://localhost:5173/` und ist im lokalen Netzwerk unter der IP-Adresse des Rechners erreichbar.
 
 ## Technischer Stack
 

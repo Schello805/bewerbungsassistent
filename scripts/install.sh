@@ -143,6 +143,15 @@ start_service() {
   fi
 }
 
+health_check() {
+  log "Prüfe App-Erreichbarkeit auf http://127.0.0.1:${PORT}/api/health ..."
+  if curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null; then
+    success "Healthcheck erfolgreich."
+  else
+    warn "Healthcheck konnte die App noch nicht erreichen. Der Service läuft eventuell noch hoch."
+  fi
+}
+
 print_summary() {
   local ip
   ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -171,6 +180,7 @@ main() {
   install_app_dependencies
   write_systemd_service
   start_service
+  health_check
   print_summary
 }
 
