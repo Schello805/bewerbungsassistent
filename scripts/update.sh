@@ -62,6 +62,21 @@ install_dependencies_and_build() {
   success "Build erfolgreich."
 }
 
+health_check() {
+  if [[ "${APP_ONLY}" == true ]]; then
+    return
+  fi
+
+  local port
+  port="$(get_service_port)"
+  log "Prüfe App-Erreichbarkeit auf http://127.0.0.1:${port}/api/health ..."
+  if curl -fsS "http://127.0.0.1:${port}/api/health" >/dev/null; then
+    success "Healthcheck erfolgreich."
+  else
+    warn "Healthcheck konnte die App noch nicht erreichen. Der Service läuft eventuell noch hoch."
+  fi
+}
+
 restart_service() {
   if [[ "${APP_ONLY}" == true ]]; then
     success "App-only Update abgeschlossen. Der laufende Serverprozess startet anschließend neu."
@@ -80,10 +95,17 @@ restart_service() {
   fi
 }
 
+get_service_port() {
+  local port=""
+  if command -v systemctl >/dev/null 2>&1; then
+    port="$(systemctl show "${APP_NAME}.service" -p Environment --value 2>/dev/null | tr ' ' '\n' | awk -F= '$1=="PORT" {print $2}' | tail -1 || true)"
+  fi
+  printf '%s' "${port:-${PORT:-5173}}"
+}
+
 print_summary() {
   local port ip
-  port="$(systemctl show "${APP_NAME}.service" -p Environment --value | tr ' ' '\n' | awk -F= '$1=="PORT" {print $2}' | tail -1)"
-  port="${port:-5173}"
+  port="$(get_service_port)"
   ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   printf '\n'
   printf 'Aktualisierte App: %s\n' "${APP_DIR}"
@@ -91,7 +113,11 @@ print_summary() {
   if [[ -n "${ip}" ]]; then
     printf 'Netzwerk-URL:     http://%s:%s/\n' "${ip}" "${port}"
   fi
-  printf '\nLogs ansehen:\n  journalctl -u %s -f\n' "${APP_NAME}"
+  if [[ "${APP_ONLY}" != true ]]; then
+    printf '\nLogs ansehen:\n  journalctl -u %s -f\n' "${APP_NAME}"
+  else
+    printf '\nApp-only Update: Der laufende Prozess startet sich über die App neu.\n'
+  fi
 }
 
 main() {
@@ -101,6 +127,7 @@ main() {
   update_repository
   install_dependencies_and_build
   restart_service
+  health_check
   print_summary
 }
 

@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import net from 'node:net';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -590,9 +591,10 @@ if (isProduction) {
     response.sendFile(path.join(rootDir, 'dist', 'index.html'));
   });
 } else {
+  const hmrPort = await findAvailablePort(Number(process.env.HMR_PORT || 5174));
   const vite = await createViteServer({
     root: rootDir,
-    server: { middlewareMode: true },
+    server: { middlewareMode: true, hmr: { port: hmrPort } },
     appType: 'spa',
   });
   app.use(vite.middlewares);
@@ -608,6 +610,26 @@ app.listen(port, host, () => {
 
 function sanitizeFileName(fileName) {
   return path.basename(fileName).replaceAll(/[^a-zA-Z0-9äöüÄÖÜß._ -]/g, '_');
+}
+
+async function findAvailablePort(startPort) {
+  for (let candidate = startPort; candidate < startPort + 50; candidate += 1) {
+    if (await isPortAvailable(candidate)) {
+      return candidate;
+    }
+  }
+  return 0;
+}
+
+function isPortAvailable(candidate) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', () => resolve(false));
+    server.listen(candidate, () => {
+      server.close(() => resolve(true));
+    });
+  });
 }
 
 function ensureColumn(table, column, definition) {
