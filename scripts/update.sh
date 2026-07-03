@@ -33,8 +33,13 @@ check_installation() {
   success "Installation gefunden: ${APP_DIR}"
 }
 
+allow_git_directory() {
+  git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
+}
+
 update_repository() {
   log "Hole aktuelle Version von GitHub ..."
+  allow_git_directory
   git -C "${APP_DIR}" fetch origin "${BRANCH}"
   git -C "${APP_DIR}" checkout "${BRANCH}"
   git -C "${APP_DIR}" pull --ff-only origin "${BRANCH}"

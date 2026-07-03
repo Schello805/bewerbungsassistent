@@ -69,11 +69,16 @@ create_service_user() {
   fi
 }
 
+allow_git_directory() {
+  git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
+}
+
 prepare_app_directory() {
   mkdir -p "$(dirname "${APP_DIR}")"
 
   if [[ -d "${APP_DIR}/.git" ]]; then
     log "Repository existiert bereits. Aktualisiere main ..."
+    allow_git_directory
     git -C "${APP_DIR}" fetch origin main
     git -C "${APP_DIR}" checkout main
     git -C "${APP_DIR}" pull --ff-only origin main
