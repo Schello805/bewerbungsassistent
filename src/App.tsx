@@ -574,12 +574,15 @@ function ApplicationShell() {
         const data = await response.json() as { error?: string };
         throw new Error(data.error ?? 'KI-Generierung fehlgeschlagen.');
       }
-      const data = await response.json() as { text: string };
+      const data = await response.json() as { text: string; warning?: string };
       const nextDraft = stabilizeGeneratedLetter(
         cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile })),
         resolvedJobDetails,
       );
       setDraft(nextDraft);
+      if (data.warning) {
+        setLetterStatus(data.warning);
+      }
       setCostEstimate(estimateAiCost(provider, `${resolvedJobInput}\n${profileEvidence.join('\n')}`, nextDraft));
       setActiveLetterId(null);
     } catch (error) {
