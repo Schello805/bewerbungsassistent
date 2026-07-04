@@ -26,6 +26,8 @@ const host = process.env.HOST || '0.0.0.0';
 const isProduction = process.env.NODE_ENV === 'production';
 const execFileAsync = promisify(execFile);
 const packageJson = JSON.parse(await fs.readFile(path.join(rootDir, 'package.json'), 'utf8'));
+const runtimeBootId = crypto.randomUUID();
+const runtimeStartedAt = new Date().toISOString();
 const runtimeAppInfo = await readRuntimeAppInfo();
 let updateInProgress = false;
 let updateTargetRevision = null;
@@ -1022,12 +1024,16 @@ async function readRuntimeAppInfo() {
       revision: `r${commitCount}-${commitHash}`,
       commitCount: Number(commitCount),
       commitHash,
+      bootId: runtimeBootId,
+      startedAt: runtimeStartedAt,
     };
   } catch {
     return {
       ok: false,
       version: packageJson.version,
       revision: null,
+      bootId: runtimeBootId,
+      startedAt: runtimeStartedAt,
     };
   }
 }

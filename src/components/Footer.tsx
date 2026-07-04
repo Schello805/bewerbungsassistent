@@ -3,6 +3,12 @@ import { RefreshCw } from 'lucide-react';
 
 const githubUrl = 'https://github.com/Schello805/bewerbungsassistent';
 const pendingUpdateKey = 'bewerbungsassistent.pendingUpdateRevision';
+const pendingBootKey = 'bewerbungsassistent.pendingUpdateBootId';
+
+type AppInfo = {
+  revision?: string | null;
+  bootId?: string | null;
+};
 
 export function Footer() {
   const [status, setStatus] = useState('Update prüfen');
@@ -13,13 +19,15 @@ export function Footer() {
     ? 'Update läuft noch. Ich verbinde automatisch wieder ...'
     : 'Update wird installiert ...');
   const [revision, setRevision] = useState(__APP_REVISION__);
+  const bootIdRef = useRef<string | null>(getPendingUpdateBootId());
   const reconnectStarted = useRef(false);
 
   const waitForRestart = useCallback((targetRevision?: string | null) => {
     if (reconnectStarted.current) return;
     reconnectStarted.current = true;
+    const previousBootId = bootIdRef.current || getPendingUpdateBootId();
     if (targetRevision) setPendingUpdateRevision(targetRevision);
-    let serviceWasUnavailable = false;
+    if (previousBootId) setPendingUpdateBootId(previousBootId);
     const startedAt = Date.now();
 
     window.setTimeout(() => {
@@ -27,29 +35,29 @@ export function Footer() {
         try {
           const response = await fetch('/api/app-info', { cache: 'no-store' });
           if (response.ok) {
-            const data = await response.json() as { revision?: string | null };
+            const data = await response.json() as AppInfo;
             if (data.revision) setRevision(data.revision);
+            if (data.bootId && !bootIdRef.current) {
+              bootIdRef.current = data.bootId;
+              setPendingUpdateBootId(data.bootId);
+            }
 
-            if (targetRevision && data.revision === targetRevision) {
+            const restarted = Boolean(previousBootId && data.bootId && data.bootId !== previousBootId);
+            const targetReached = targetRevision ? data.revision === targetRevision : restarted;
+
+            if (restarted && targetReached) {
               clearPendingUpdateRevision();
-              setMaintenanceMessage(`Update ist aktiv (${targetRevision}). Seite wird neu geladen ...`);
-              window.setTimeout(() => window.location.reload(), 700);
+              clearPendingUpdateBootId();
+              setMaintenanceMessage('Update ist fertig. Neuer Dienst läuft. Seite wird neu geladen ...');
+              window.setTimeout(() => window.location.replace(`${window.location.pathname}${window.location.search}`), 700);
               return;
             }
 
-            if (!targetRevision && serviceWasUnavailable) {
-              setMaintenanceMessage('Dienst ist wieder erreichbar. Seite wird neu geladen ...');
-              window.setTimeout(() => window.location.reload(), 700);
-              return;
-            }
-
-            setMaintenanceMessage(targetRevision
-              ? `Update läuft noch. Warte auf Rev. ${targetRevision} ...`
-              : 'Update läuft noch. Ich warte auf den Neustart ...');
+            const restartText = restarted ? 'Neuer Dienst erkannt, warte auf neue Dateien ...' : 'Warte auf Neustart des Dienstes ...';
+            setMaintenanceMessage(targetRevision ? `${restartText} Ziel: Rev. ${targetRevision}` : restartText);
           }
         } catch {
-          serviceWasUnavailable = true;
-          setMaintenanceMessage('Dienst startet gerade neu. Ich verbinde automatisch wieder ...');
+          setMaintenanceMessage('Dienst ist während des Updates kurz nicht erreichbar. Ich warte weiter ...');
         }
 
         if (Date.now() - startedAt > 240000) {
@@ -75,7 +83,7 @@ export function Footer() {
         error?: string;
       };
       if (data.updating) {
-        if (data.targetRevision && data.targetRevision === revision) {
+        if (data.targetRevision && data.targetRevision === revision && !getPendingUpdateRevision()) {
           setStatus('Aktuell');
           setUpdateAvailable(false);
           setMaintenanceVisible(false);
@@ -102,12 +110,22 @@ export function Footer() {
   const loadAppInfo = useCallback(async () => {
     try {
       const response = await fetch('/api/app-info', { cache: 'no-store' });
-      const data = await response.json() as { revision?: string | null };
+      const data = await response.json() as AppInfo;
       const pendingRevision = getPendingUpdateRevision();
+      const pendingBootId = getPendingUpdateBootId();
+      if (data.bootId) {
+        if (!pendingRevision) {
+          bootIdRef.current = data.bootId;
+          setPendingUpdateBootId(data.bootId);
+        } else if (!bootIdRef.current) {
+          bootIdRef.current = pendingBootId || data.bootId;
+        }
+      }
       if (data.revision) {
         setRevision(data.revision);
-        if (pendingRevision && data.revision === pendingRevision) {
+        if (pendingRevision && data.revision === pendingRevision && pendingBootId && data.bootId !== pendingBootId) {
           clearPendingUpdateRevision();
+          clearPendingUpdateBootId();
           setMaintenanceVisible(false);
           reconnectStarted.current = false;
         }
@@ -223,6 +241,30 @@ function setPendingUpdateRevision(revision: string) {
 function clearPendingUpdateRevision() {
   try {
     window.localStorage.removeItem(pendingUpdateKey);
+  } catch {
+    // localStorage may be unavailable in private/browser-restricted contexts.
+  }
+}
+
+function getPendingUpdateBootId() {
+  try {
+    return window.localStorage.getItem(pendingBootKey);
+  } catch {
+    return null;
+  }
+}
+
+function setPendingUpdateBootId(bootId: string) {
+  try {
+    window.localStorage.setItem(pendingBootKey, bootId);
+  } catch {
+    // localStorage may be unavailable in private/browser-restricted contexts.
+  }
+}
+
+function clearPendingUpdateBootId() {
+  try {
+    window.localStorage.removeItem(pendingBootKey);
   } catch {
     // localStorage may be unavailable in private/browser-restricted contexts.
   }
