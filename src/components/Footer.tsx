@@ -2,19 +2,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 
 const githubUrl = 'https://github.com/Schello805/bewerbungsassistent';
+const pendingUpdateKey = 'bewerbungsassistent.pendingUpdateRevision';
 
 export function Footer() {
   const [status, setStatus] = useState('Update prüfen');
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [maintenanceVisible, setMaintenanceVisible] = useState(false);
-  const [maintenanceMessage, setMaintenanceMessage] = useState('Update wird installiert ...');
+  const [maintenanceVisible, setMaintenanceVisible] = useState(() => Boolean(getPendingUpdateRevision()));
+  const [maintenanceMessage, setMaintenanceMessage] = useState(() => getPendingUpdateRevision()
+    ? 'Update läuft noch. Ich verbinde automatisch wieder ...'
+    : 'Update wird installiert ...');
   const [revision, setRevision] = useState(__APP_REVISION__);
   const reconnectStarted = useRef(false);
 
   const waitForRestart = useCallback((targetRevision?: string | null) => {
     if (reconnectStarted.current) return;
     reconnectStarted.current = true;
+    if (targetRevision) setPendingUpdateRevision(targetRevision);
     let serviceWasUnavailable = false;
     const startedAt = Date.now();
 
@@ -27,6 +31,7 @@ export function Footer() {
             if (data.revision) setRevision(data.revision);
 
             if (targetRevision && data.revision === targetRevision) {
+              clearPendingUpdateRevision();
               setMaintenanceMessage(`Update ist aktiv (${targetRevision}). Seite wird neu geladen ...`);
               window.setTimeout(() => window.location.reload(), 700);
               return;
@@ -74,9 +79,11 @@ export function Footer() {
           setStatus('Aktuell');
           setUpdateAvailable(false);
           setMaintenanceVisible(false);
+          clearPendingUpdateRevision();
           reconnectStarted.current = false;
           return;
         }
+        if (data.targetRevision) setPendingUpdateRevision(data.targetRevision);
         setStatus('Update läuft ...');
         setMaintenanceVisible(true);
         setMaintenanceMessage(data.targetRevision
@@ -96,16 +103,30 @@ export function Footer() {
     try {
       const response = await fetch('/api/app-info', { cache: 'no-store' });
       const data = await response.json() as { revision?: string | null };
-      if (data.revision) setRevision(data.revision);
+      const pendingRevision = getPendingUpdateRevision();
+      if (data.revision) {
+        setRevision(data.revision);
+        if (pendingRevision && data.revision === pendingRevision) {
+          clearPendingUpdateRevision();
+          setMaintenanceVisible(false);
+          reconnectStarted.current = false;
+        }
+      }
     } catch {
       // Build-time values remain visible as fallback.
     }
   }, []);
 
   useEffect(() => {
+    const pendingRevision = getPendingUpdateRevision();
+    if (pendingRevision) {
+      setMaintenanceVisible(true);
+      setMaintenanceMessage(`Update läuft noch. Warte auf Rev. ${pendingRevision} ...`);
+      waitForRestart(pendingRevision);
+    }
     loadAppInfo();
     checkUpdate(false);
-  }, [checkUpdate, loadAppInfo]);
+  }, [checkUpdate, loadAppInfo, waitForRestart]);
 
   async function runUpdate() {
     setIsUpdating(true);
@@ -123,12 +144,14 @@ export function Footer() {
       if (!response.ok) throw new Error(data.error || 'Update fehlgeschlagen.');
       setStatus(data.message || 'Update abgeschlossen.');
       if (data.updated) {
+        if (data.targetRevision) setPendingUpdateRevision(data.targetRevision);
         setMaintenanceMessage(data.targetRevision
           ? `Update wird installiert. Ziel ist Rev. ${data.targetRevision} ...`
           : 'Update wird installiert. Der Dienst startet gleich neu ...');
         waitForRestart(data.targetRevision);
       } else {
         setMaintenanceVisible(false);
+        clearPendingUpdateRevision();
         reconnectStarted.current = false;
       }
     } catch (error) {
@@ -137,6 +160,7 @@ export function Footer() {
         waitForRestart();
       } else {
         setMaintenanceVisible(false);
+        clearPendingUpdateRevision();
         reconnectStarted.current = false;
         setStatus(error instanceof Error ? error.message : 'Update fehlgeschlagen.');
       }
@@ -178,6 +202,30 @@ export function Footer() {
       ) : null}
     </>
   );
+}
+
+function getPendingUpdateRevision() {
+  try {
+    return window.localStorage.getItem(pendingUpdateKey);
+  } catch {
+    return null;
+  }
+}
+
+function setPendingUpdateRevision(revision: string) {
+  try {
+    window.localStorage.setItem(pendingUpdateKey, revision);
+  } catch {
+    // localStorage may be unavailable in private/browser-restricted contexts.
+  }
+}
+
+function clearPendingUpdateRevision() {
+  try {
+    window.localStorage.removeItem(pendingUpdateKey);
+  } catch {
+    // localStorage may be unavailable in private/browser-restricted contexts.
+  }
 }
 
 function GithubIcon() {
