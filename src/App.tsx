@@ -2088,10 +2088,6 @@ function uniqueValues(values: string[]) {
 
 async function copyTextToClipboard(text: string) {
   if (!text.trim()) return;
-  if (navigator.clipboard?.writeText && window.isSecureContext) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
 
   const textArea = document.createElement('textarea');
   textArea.value = text;
@@ -2102,9 +2098,21 @@ async function copyTextToClipboard(text: string) {
   document.body.appendChild(textArea);
   textArea.focus();
   textArea.select();
-  const copied = document.execCommand('copy');
-  document.body.removeChild(textArea);
-  if (!copied) throw new Error('Clipboard fallback failed');
+  try {
+    const copied = document.execCommand('copy');
+    if (copied) return;
+  } finally {
+    document.body.removeChild(textArea);
+  }
+
+  const clipboard = 'clipboard' in navigator ? navigator.clipboard : undefined;
+  const write = clipboard && 'writeText' in clipboard ? clipboard.writeText.bind(clipboard) : undefined;
+  if (write && window.isSecureContext) {
+    await write(text);
+    return;
+  }
+
+  throw new Error('Clipboard fallback failed');
 }
 
 function cleanGeneratedLetter(text: string) {

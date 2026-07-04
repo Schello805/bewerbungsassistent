@@ -60,9 +60,9 @@ install_dependencies_and_build() {
 
   log "Erstelle neuen Produktionsbuild ..."
   if [[ "${APP_ONLY}" == true ]]; then
-    cd "${APP_DIR}" && npm run build
+    cd "${APP_DIR}" && rm -rf dist && npm run build
   else
-    runuser -u "${SERVICE_USER}" -- bash -lc "cd '${APP_DIR}' && npm run build"
+    runuser -u "${SERVICE_USER}" -- bash -lc "cd '${APP_DIR}' && rm -rf dist && npm run build"
   fi
   success "Build erfolgreich."
 }

@@ -638,8 +638,11 @@ app.use((error, _request, response, _next) => {
 if (isProduction) {
   const distDir = path.join(rootDir, 'dist');
   app.use('/assets', express.static(path.join(distDir, 'assets'), {
-    immutable: true,
-    maxAge: '1y',
+    etag: false,
+    lastModified: false,
+    setHeaders: (response) => {
+      response.setHeader('Cache-Control', 'no-store');
+    },
   }));
   app.use(express.static(distDir, {
     index: false,
