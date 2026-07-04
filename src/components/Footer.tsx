@@ -10,7 +10,6 @@ export function Footer() {
   const [maintenanceVisible, setMaintenanceVisible] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState('Update wird installiert ...');
   const [revision, setRevision] = useState(__APP_REVISION__);
-  const [version, setVersion] = useState(__APP_VERSION__);
   const reconnectStarted = useRef(false);
 
   const waitForRestart = useCallback((targetRevision?: string | null) => {
@@ -24,9 +23,8 @@ export function Footer() {
         try {
           const response = await fetch('/api/app-info', { cache: 'no-store' });
           if (response.ok) {
-            const data = await response.json() as { revision?: string | null; version?: string | null };
+            const data = await response.json() as { revision?: string | null };
             if (data.revision) setRevision(data.revision);
-            if (data.version) setVersion(data.version);
 
             if (targetRevision && data.revision === targetRevision) {
               setMaintenanceMessage(`Update ist aktiv (${targetRevision}). Seite wird neu geladen ...`);
@@ -97,9 +95,8 @@ export function Footer() {
   const loadAppInfo = useCallback(async () => {
     try {
       const response = await fetch('/api/app-info', { cache: 'no-store' });
-      const data = await response.json() as { revision?: string | null; version?: string | null };
+      const data = await response.json() as { revision?: string | null };
       if (data.revision) setRevision(data.revision);
-      if (data.version) setVersion(data.version);
     } catch {
       // Build-time values remain visible as fallback.
     }
@@ -154,7 +151,7 @@ export function Footer() {
         <div>
           <strong>Bewerbungsassistent</strong>
           <p>
-            Open Source von Michael Schellenberger · Rev. {revision} · v{version}
+            Open Source von Michael Schellenberger · Rev. {revision}
           </p>
         </div>
         <nav aria-label="Rechtliche Links">

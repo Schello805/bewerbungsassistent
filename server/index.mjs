@@ -545,8 +545,17 @@ app.post('/api/generate-letter', async (request, response, next) => {
       return;
     }
 
-    const text = cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt }));
-    response.json({ text });
+    try {
+      const text = cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt }));
+      response.json({ text });
+    } catch (providerError) {
+      response.json({
+        text: '',
+        warning: providerError instanceof Error
+          ? `KI-Anbieter nicht verfügbar: ${providerError.message}`
+          : 'KI-Anbieter nicht verfügbar. Lokale Vorlage erstellt.',
+      });
+    }
   } catch (error) {
     next(error);
   }
