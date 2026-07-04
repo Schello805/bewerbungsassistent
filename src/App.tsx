@@ -2188,7 +2188,7 @@ function stabilizeSubjectLine(text: string, jobDetails: JobDetails) {
   const subjectIndex = lines.findIndex((line) => /^bewerbung\b/i.test(line.trim()));
   if (subjectIndex === -1) return text;
   const currentSubject = lines[subjectIndex].trim();
-  if (!isSuspiciousTitle(currentSubject) && currentSubject.length <= 110) return text;
+  if (currentSubject === jobDetails.subject && !isSuspiciousTitle(currentSubject) && currentSubject.length <= 110) return text;
   lines[subjectIndex] = jobDetails.subject;
   return lines.join('\n');
 }
@@ -2200,7 +2200,9 @@ function stabilizeIntroParagraph(text: string, jobDetails: JobDetails) {
   const introIndex = lines.findIndex((line, index) => index > salutationIndex && line.trim().length > 0);
   if (introIndex === -1) return text;
   const intro = lines[introIndex].trim();
-  if (!isSuspiciousIntro(intro)) return text;
+  const titleMissing = Boolean(jobDetails.title && !intro.toLowerCase().includes(jobDetails.title.toLowerCase()));
+  const companyMissing = Boolean(jobDetails.company && !intro.toLowerCase().includes(jobDetails.company.toLowerCase()));
+  if (!isSuspiciousIntro(intro) && !titleMissing && !companyMissing) return text;
 
   const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
@@ -2357,9 +2359,11 @@ function extractTitle(text: string, url: string) {
   if (xingTitle) return cleanTitle(xingTitle);
   const titleBeforeTasks = normalized.match(/([A-ZÄÖÜ][\wÄÖÜäöüß /&.,'-]{3,90}\s+\(m\/w\/d\))\s*Das sind Ihre Aufgaben/i)?.[1];
   if (titleBeforeTasks) return cleanTitle(titleBeforeTasks);
+  const qualityEngineerTitle = normalized.match(/\b((?:Senior\s+)?Qualitätsingenieur(?:in)?(?:\s+\(m\/w\/d\))?)/i)?.[1];
+  if (qualityEngineerTitle) return cleanTitle(qualityEngineerTitle);
   const headTitle = normalized.match(/\b(Head of [A-ZÄÖÜ][\wÄÖÜäöüß /&.,'-]{3,80})(?:\s+\(m\/w\/d\))?/i)?.[1];
   if (headTitle) return cleanTitle(headTitle);
-  const leaderTitle = normalized.match(/\b((?:Leiter|Leitung|Bereichsleiter|Teamleiter|Manager|Quality Manager|Qualitätsmanager)[\wÄÖÜäöüß /&.,'-]{3,80})(?:\s+\(m\/w\/d\))?/i)?.[1];
+  const leaderTitle = normalized.match(/\b((?:Leiter(?!platten)|Leitung|Bereichsleiter|Teamleiter|Manager|Quality Manager|Qualitätsmanager)\b[\wÄÖÜäöüß /&.,'-]{3,80})(?:\s+\(m\/w\/d\))?/i)?.[1];
   if (leaderTitle) return cleanTitle(leaderTitle);
   const titleFromText = primaryText.match(/(?:Position|Stelle)\s+([^\n.]{4,80})/i)?.[1]?.trim();
   if (titleFromText) return cleanTitle(titleFromText);
@@ -2395,7 +2399,7 @@ function getPrimaryJobText(text: string) {
 }
 
 function cleanTitle(value: string) {
-  const roleWords = /(leitung|leiter|head|manager|quality|qualität|qualitaet|sicherung|auditor|projekt|controller|controlling|prozess|operations|operative|sachbearbeiter|ingenieur|specialist|lead)/i;
+  const roleWords = /\b(leitung|leiter(?!platten)|head|manager|quality|qualität|qualitaet|sicherung|auditor|projekt|controller|controlling|prozess|operations|operative|sachbearbeiter|ingenieur|specialist|lead)\b/i;
   let cleaned = value
     .replace(/\b\d{5,}\b/g, ' ')
     .replace(/\b(?:xing|linkedin|stepstone|indeed)\b/gi, ' ')
