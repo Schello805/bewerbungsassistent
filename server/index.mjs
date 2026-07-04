@@ -627,9 +627,24 @@ app.use((error, _request, response, _next) => {
 });
 
 if (isProduction) {
-  app.use(express.static(path.join(rootDir, 'dist')));
+  const distDir = path.join(rootDir, 'dist');
+  app.use('/assets', express.static(path.join(distDir, 'assets'), {
+    immutable: true,
+    maxAge: '1y',
+  }));
+  app.use(express.static(distDir, {
+    index: false,
+    setHeaders: (response, filePath) => {
+      if (filePath.endsWith('index.html')) {
+        response.setHeader('Cache-Control', 'no-store');
+      } else {
+        response.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }));
   app.get(/.*/, (_request, response) => {
-    response.sendFile(path.join(rootDir, 'dist', 'index.html'));
+    response.set('Cache-Control', 'no-store');
+    response.sendFile(path.join(distDir, 'index.html'));
   });
 } else {
   const hmrPort = await findAvailablePort(Number(process.env.HMR_PORT || 5174));
