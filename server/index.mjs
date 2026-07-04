@@ -169,9 +169,19 @@ app.post('/api/update', async (_request, response) => {
   updateLogs.length = 0;
   addUpdateLog('Update gestartet.');
   try {
-    const result = await runSelfUpdate();
-    response.json({ ...result, logs: updateLogs.slice(-12) });
-    setTimeout(() => process.exit(0), 1200);
+    const plan = await prepareSelfUpdate();
+    if (!plan.updated) {
+      updateInProgress = false;
+      response.json({ ...plan, logs: updateLogs.slice(-12) });
+      return;
+    }
+
+    response.status(202).json({ ...plan, logs: updateLogs.slice(-12) });
+    void finishSelfUpdate(plan).catch((error) => {
+      const message = formatUpdateError(error);
+      updateInProgress = false;
+      addUpdateLog(`Fehler: ${message}`);
+    });
   } catch (error) {
     const message = formatUpdateError(error);
     updateInProgress = false;
@@ -958,7 +968,7 @@ async function getUpdateStatus() {
   }
 }
 
-async function runSelfUpdate() {
+async function prepareSelfUpdate() {
   addUpdateLog('Remote-Stand wird geladen.');
   await gitOutput(['fetch', 'origin', 'main']);
   const before = await gitOutput(['rev-parse', '--short', 'HEAD']);
@@ -971,10 +981,14 @@ async function runSelfUpdate() {
   }
 
   addUpdateLog(`${behind} Änderung(en) gefunden. Update-Script startet.`);
+  return { ok: true, updated: true, message: 'Update wird installiert. Die App startet danach automatisch neu.', before, behind };
+}
+
+async function finishSelfUpdate(plan) {
   await execInRoot('bash', ['scripts/update.sh', '--app-only'], 240000);
   const current = await gitOutput(['rev-parse', '--short', 'HEAD']);
-  addUpdateLog(`Update installiert: ${before} → ${current}.`);
-  return { ok: true, updated: true, message: 'Update installiert. Server startet neu.', before, current };
+  addUpdateLog(`Update installiert: ${plan.before} → ${current}.`);
+  setTimeout(() => process.exit(0), 1200);
 }
 
 function addUpdateLog(message) {
