@@ -196,14 +196,20 @@ function ApplicationShell() {
   const [applicationSearch, setApplicationSearch] = useState('');
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<ApplicationStatus | 'Alle'>('Alle');
   const [showDueOnly, setShowDueOnly] = useState(false);
+  const [mobileEditorTab, setMobileEditorTab] = useState<'text' | 'preview'>('text');
+  const [isQualityOpen, setIsQualityOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
+  const hasDraft = draft.trim().length > 0;
   const wordCount = useMemo(() => draft.trim().split(/\s+/).filter(Boolean).length, [draft]);
   const jobDetails = useMemo(() => extractJobDetails(jobInput), [jobInput]);
+  const hasJobInput = jobInput.trim().length > 8;
   const canCreateLetter = jobInput.trim().length > 8 && personalData.name.trim().length > 0;
   const providerNeedsApiKey = provider !== 'Llama lokal';
   const hasApiKey = !providerNeedsApiKey || apiKey.trim().length > 0 || apiKeyProviders.includes(provider);
+  const availableProviderCount = providerOptions.filter((option) => providerHasUsableKey(option, apiKeyProviders)).length;
+  const canCompareProviders = canCreateLetter && availableProviderCount >= 2;
   const currentProviderHasStoredKey = apiKeyProviders.includes(provider);
   const apiKeyDisplayValue = apiKey || (!isApiKeyEditing && currentProviderHasStoredKey ? '••••••••••••' : '');
   const googleClientIdDisplayValue = googleClientIdInput || (!isGoogleClientIdEditing && googleClientId ? '••••••••••••' : '');
@@ -317,6 +323,10 @@ function ApplicationShell() {
     void loadLetters();
     void loadApplications();
   }, [loadApplications, loadDocuments, loadLetters, loadSettings]);
+
+  useEffect(() => {
+    if (hasDraft) setIsQualityOpen(true);
+  }, [hasDraft]);
 
   useEffect(() => {
     const legacyApiKey = localStorage.getItem(getApiKeyStorageKey(provider));
@@ -1048,7 +1058,7 @@ function ApplicationShell() {
               <textarea
                 value={jobInput}
                 onChange={(event) => setJobInput(event.target.value)}
-                placeholder="Link oder Text der Stellenanzeige hier einfügen ..."
+                placeholder="Link einfügen oder Stellenanzeige reinkopieren ..."
               />
             </label>
             <div className="create-actions">
@@ -1056,12 +1066,16 @@ function ApplicationShell() {
                 <WandSparkles size={18} />
                 {isGenerating ? 'Anschreiben wird erstellt ...' : 'Anschreiben erstellen'}
               </button>
-              <button type="button" className="button secondary compare-action" onClick={compareProviders} disabled={!canCreateLetter || isComparing}>
+              <button type="button" className={canCompareProviders ? 'button secondary compare-action is-ready' : 'button secondary compare-action'} onClick={compareProviders} disabled={!canCompareProviders || isComparing}>
                 <RefreshCw size={18} />
                 {isComparing ? 'KI-Vergleich läuft ...' : 'KIs vergleichen'}
               </button>
             </div>
-            <p className="compare-cost-note">Hinweis: Beim Vergleich wird jede verfügbare KI separat abgefragt. Dadurch können je Anbieter zusätzliche Kosten entstehen.</p>
+            <p className="compare-cost-note">
+              {availableProviderCount >= 2
+                ? 'Beim Vergleich wird jede verfügbare KI separat abgefragt. Dadurch können zusätzliche Kosten entstehen.'
+                : 'KI-Vergleich wird aktiv, sobald mindestens zwei KI-Anbieter nutzbar sind.'}
+            </p>
           </article>
 
         </section>
@@ -1070,8 +1084,8 @@ function ApplicationShell() {
           <div className="analysis-heading-row">
             <div>
               <p className="eyebrow">Analyse</p>
-              <h2>{jobInput.trim() ? 'Stellenmatching' : 'Bereit für die Stellenanzeige'}</h2>
-              <p>{jobInput.trim() ? jobDetails.subject : 'Link oder Text einfügen, danach werden Anforderungen mit deinem Profil abgeglichen.'}</p>
+              <h2>{hasJobInput ? 'Stellenmatching' : 'Noch keine Stelle analysiert'}</h2>
+              <p>{hasJobInput ? jobDetails.subject : 'Link oder Text einfügen, dann werden Anforderungen mit deinem Profil abgeglichen.'}</p>
               {profileAutoFillStatus && <p className="document-status">{profileAutoFillStatus}</p>}
             </div>
             <button type="button" className="text-button" onClick={() => setView('settings')}>Profil öffnen</button>
@@ -1079,21 +1093,24 @@ function ApplicationShell() {
           <div className="matching-score-grid" aria-label="Stellenmatching Kennzahlen">
             <article>
               <span>Erkannt</span>
-              <strong>{matchItems.length}</strong>
-              <small>Anforderungen aus der Stelle</small>
+              <strong>{hasJobInput ? matchItems.length : '–'}</strong>
+              <small>{hasJobInput ? 'Anforderungen aus der Stelle' : 'wartet auf Eingabe'}</small>
             </article>
             <article>
               <span>Treffer</span>
-              <strong>{matchedRequirementCount}</strong>
-              <small>mit deinen Qualifikationen</small>
+              <strong>{hasJobInput ? matchedRequirementCount : '–'}</strong>
+              <small>{hasJobInput ? 'mit deinen Qualifikationen' : `${profileEvidence.length} Profilpunkte bereit`}</small>
             </article>
-            <article className={matchingPercent >= 60 ? 'score-good' : matchingPercent >= 35 ? 'score-medium' : 'score-low'}>
+            <article className={!hasJobInput ? 'score-neutral' : matchingPercent >= 60 ? 'score-good' : matchingPercent >= 35 ? 'score-medium' : 'score-low'}>
               <span>Matching</span>
-              <strong>{matchingPercent}%</strong>
-              <small>{profileEvidence.length} Profilpunkte verfügbar</small>
+              <strong>{hasJobInput ? `${matchingPercent}%` : '–'}</strong>
+              <div className="matching-progress" aria-hidden="true">
+                <span style={{ width: hasJobInput ? `${matchingPercent}%` : '0%' }} />
+              </div>
+              <small>{hasJobInput ? `${profileEvidence.length} Profilpunkte verfügbar` : 'noch keine Auswertung'}</small>
             </article>
           </div>
-          <details className="analysis-details">
+          <details className="analysis-details" open={hasJobInput}>
             <summary>Details anzeigen</summary>
             <div className="analysis-details-grid">
               <div className="analysis-block">
@@ -1132,7 +1149,7 @@ function ApplicationShell() {
         </section>
 
         <section id="editor" className="section editor-section">
-          <div className="editor-layout">
+          <div className={draft ? 'editor-layout' : 'editor-layout is-empty'}>
             <div className="editor-toolbar">
               <span>{draft ? `${wordCount} Wörter${activeLetterId ? ' · gespeicherte Version geöffnet' : ''}` : 'Noch kein Anschreiben erstellt'}</span>
               <div className="toolbar-actions">
@@ -1144,26 +1161,41 @@ function ApplicationShell() {
                 <button type="button" className="ai-chip" onClick={() => rewriteDraft('shorten')} disabled={!draft || isRewriting}><Scissors size={14} /> Kürzen</button>
               </div>
             </div>
-            <div className="editor-preview-grid">
-              <textarea
-                className="draft-editor"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="Hier erscheint dein Anschreiben. Du kannst es direkt bearbeiten."
-              />
-              <LetterPreview text={draft} />
-            </div>
+            {draft ? (
+              <>
+                <div className="mobile-editor-tabs" aria-label="Editor Ansicht wechseln">
+                  <button type="button" className={mobileEditorTab === 'text' ? 'active' : ''} onClick={() => setMobileEditorTab('text')}>Text</button>
+                  <button type="button" className={mobileEditorTab === 'preview' ? 'active' : ''} onClick={() => setMobileEditorTab('preview')}>Vorschau</button>
+                </div>
+                <div className={`editor-preview-grid mobile-show-${mobileEditorTab}`}>
+                  <textarea
+                    className="draft-editor"
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    placeholder="Hier erscheint dein Anschreiben. Du kannst es direkt bearbeiten."
+                  />
+                  <LetterPreview text={draft} />
+                </div>
+              </>
+            ) : (
+              <div className="editor-empty-state">
+                <strong>Bereit für dein Anschreiben</strong>
+                <p>Füge oben den Link oder Text der Stellenanzeige ein und klicke auf „Anschreiben erstellen“. Danach erscheinen Editor, Vorschau und Export.</p>
+              </div>
+            )}
             <div className="editor-meta">
               <button type="button" className="button success" onClick={saveFinalLetter} disabled={!draft}><Save size={18} /> Fertig speichern</button>
               <button type="button" className="button primary" onClick={downloadDocx} disabled={!draft}><Download size={18} /> DOCX herunterladen</button>
               <button type="button" className="button google" onClick={openGoogleDocs} disabled={!draft || isGoogleLoading}><Link2 size={18} /> {isGoogleLoading ? 'Google Docs öffnet ...' : 'Google Docs öffnen'}</button>
               <button type="button" className="button secondary" onClick={copyForGoogleDocs} disabled={!draft}><Link2 size={18} /> Text kopieren</button>
             </div>
-            <section className="quality-panel" aria-label="Anschreiben Qualitätscheck">
-              <div>
+            <details className="quality-panel quality-accordion" aria-label="Anschreiben Qualitätscheck" open={hasDraft && isQualityOpen} onToggle={(event) => setIsQualityOpen(event.currentTarget.open)}>
+              <summary>
+                <span>
                 <h3>Qualitätscheck</h3>
                 <p>{draft ? `${passedQualityChecks} von ${qualityChecks.length} Punkten erfüllt` : 'Sobald ein Anschreiben erstellt ist, wird es hier geprüft.'}</p>
-              </div>
+                </span>
+              </summary>
               <ul>
                 {qualityChecks.map((check) => (
                   <li key={check.label} className={check.ok ? 'check-ok' : 'check-missing'}>
@@ -1175,7 +1207,7 @@ function ApplicationShell() {
                   </li>
                 ))}
               </ul>
-            </section>
+            </details>
             {costEstimate && (
               <section className="quality-panel cost-panel" aria-label="KI Kostenschätzung">
                 <div>
