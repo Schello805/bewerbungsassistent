@@ -72,6 +72,13 @@ export function Footer() {
         error?: string;
       };
       if (data.updating) {
+        if (data.targetRevision && data.targetRevision === revision) {
+          setStatus('Aktuell');
+          setUpdateAvailable(false);
+          setMaintenanceVisible(false);
+          reconnectStarted.current = false;
+          return;
+        }
         setStatus('Update läuft ...');
         setMaintenanceVisible(true);
         setMaintenanceMessage(data.targetRevision
@@ -85,7 +92,7 @@ export function Footer() {
     } catch {
       if (showStatus) setStatus('Updateprüfung nicht möglich');
     }
-  }, [waitForRestart]);
+  }, [revision, waitForRestart]);
 
   const loadAppInfo = useCallback(async () => {
     try {
