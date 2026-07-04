@@ -3090,8 +3090,18 @@ textarea:focus {
 }
 
 .apply-main .create-panel textarea {
-  min-height: 112px;
-  max-height: 190px;
+  min-height: 92px;
+  max-height: 170px;
+}
+
+.apply-main .create-actions {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.48fr);
+}
+
+.compare-action.is-ready {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
 }
 
 .compact-analysis-panel {
@@ -3171,6 +3181,27 @@ textarea:focus {
   color: #b42318;
 }
 
+.matching-score-grid .score-neutral {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+}
+
+.matching-progress {
+  overflow: hidden;
+  height: 7px;
+  margin: 7px 0 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.matching-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e);
+  transition: width 180ms ease;
+}
+
 .analysis-details {
   margin-top: 12px;
   border: 1px solid #e2e8f0;
@@ -3201,6 +3232,97 @@ textarea:focus {
   gap: 12px;
 }
 
+.editor-layout.is-empty {
+  gap: 12px;
+}
+
+.editor-layout.is-empty .toolbar-actions,
+.editor-layout.is-empty .editor-meta {
+  display: none;
+}
+
+.editor-empty-state {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f8fafc, #eff6ff);
+  padding: 22px;
+  text-align: center;
+}
+
+.editor-empty-state strong {
+  color: #111827;
+  font-size: 1.05rem;
+}
+
+.editor-empty-state p {
+  max-width: 560px;
+  margin: 6px auto 0;
+  color: #64748b;
+}
+
+.mobile-editor-tabs {
+  display: none;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-editor-tabs button {
+  min-height: 36px;
+  border: 1px solid #dbe3ea;
+  border-radius: 999px;
+  background: #fff;
+  color: #64748b;
+  font-weight: 800;
+}
+
+.mobile-editor-tabs button.active {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.quality-accordion {
+  padding: 0;
+}
+
+.quality-accordion summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 12px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.quality-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.quality-accordion summary::after {
+  content: "⌄";
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #dbe3ea;
+  border-radius: 999px;
+  color: #64748b;
+  font-weight: 900;
+  transition: transform 160ms ease;
+}
+
+.quality-accordion[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.quality-accordion ul {
+  padding: 0 12px 12px;
+}
+
 .versions-main {
   max-width: 1280px;
 }
@@ -3222,4 +3344,48 @@ textarea:focus {
   .matching-score-grid {
     grid-template-columns: 1fr;
   }
+
+  .apply-main .create-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-editor-tabs {
+    display: grid;
+  }
+
+  .editor-preview-grid.mobile-show-text .letter-preview,
+  .editor-preview-grid.mobile-show-preview .draft-editor {
+    display: none;
+  }
+
+  .editor-preview-grid.mobile-show-text,
+  .editor-preview-grid.mobile-show-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .draft-editor,
+  .preview-page {
+    min-height: 420px;
+  }
+}
+
+/* Final minimal footer */
+.app-footer {
+  padding: 18px 0 22px;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.app-footer strong {
+  font-size: 0.9rem;
+}
+
+.app-footer nav {
+  gap: 8px;
+}
+
+.footer-update {
+  min-height: 30px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
 }
