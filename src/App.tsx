@@ -1164,7 +1164,7 @@ function ApplicationShell() {
         <section id="editor" className="section editor-section">
           <div className={draft ? 'editor-layout' : 'editor-layout is-empty'}>
             <div className="editor-toolbar">
-              <span>{draft ? `${wordCount} Wörter${activeLetterId ? ' · gespeicherte Version geöffnet' : ''}` : 'Noch kein Anschreiben erstellt'}</span>
+              <span>{isGenerating ? 'Anschreiben wird erstellt ...' : draft ? `${wordCount} Wörter${activeLetterId ? ' · gespeicherte Version geöffnet' : ''}` : 'Noch kein Anschreiben erstellt'}</span>
               <div className="toolbar-actions">
                 <button type="button" className="ai-chip" onClick={() => rewriteDraft('modern')} disabled={!draft || isRewriting}><RefreshCw size={14} /> Moderner</button>
                 <button type="button" className="ai-chip" onClick={() => rewriteDraft('detailed')} disabled={!draft || isRewriting}><RefreshCw size={14} /> Detaillierter</button>
@@ -1190,6 +1190,12 @@ function ApplicationShell() {
                   <LetterPreview text={draft} />
                 </div>
               </>
+            ) : isGenerating ? (
+              <div className="editor-loading-state" role="status" aria-live="polite">
+                <div className="editor-loading-spinner" aria-hidden="true" />
+                <strong>Anschreiben wird erstellt</strong>
+                <p>Die KI gleicht gerade Stellenanzeige und Profil ab. Das dauert meist nur ein paar Sekunden.</p>
+              </div>
             ) : (
               <div className="editor-empty-state">
                 <strong>Bereit für dein Anschreiben</strong>
@@ -1197,10 +1203,10 @@ function ApplicationShell() {
               </div>
             )}
             <div className="editor-meta">
-              <button type="button" className="button success" onClick={saveFinalLetter} disabled={!draft}><Save size={18} /> Fertig speichern</button>
-              <button type="button" className="button primary" onClick={downloadDocx} disabled={!draft}><Download size={18} /> DOCX herunterladen</button>
-              <button type="button" className="button google" onClick={openGoogleDocs} disabled={!draft || isGoogleLoading}><Link2 size={18} /> {isGoogleLoading ? 'Google Docs öffnet ...' : 'Google Docs öffnen'}</button>
-              <button type="button" className="button secondary" onClick={copyForGoogleDocs} disabled={!draft}><Link2 size={18} /> Text kopieren</button>
+              <button type="button" className="button success" onClick={saveFinalLetter} disabled={!draft || isGenerating}><Save size={18} /> Fertig speichern</button>
+              <button type="button" className="button primary" onClick={downloadDocx} disabled={!draft || isGenerating}><Download size={18} /> DOCX herunterladen</button>
+              <button type="button" className="button google" onClick={openGoogleDocs} disabled={!draft || isGoogleLoading || isGenerating}><Link2 size={18} /> {isGoogleLoading ? 'Google Docs öffnet ...' : 'Google Docs öffnen'}</button>
+              <button type="button" className="button secondary" onClick={copyForGoogleDocs} disabled={!draft || isGenerating}><Link2 size={18} /> Text kopieren</button>
             </div>
             <details className="quality-panel quality-accordion" aria-label="Anschreiben Qualitätscheck" open={hasDraft && isQualityOpen} onToggle={(event) => setIsQualityOpen(event.currentTarget.open)}>
               <summary>
