@@ -780,6 +780,9 @@ function ApplicationShell() {
     const lines = textOverride.split('\n');
     const subjectIndex = lines.findIndex((line) => line.trim().toLowerCase().startsWith('bewerbung'));
     const dateIndex = lines.findIndex((line) => /\b\d{2}\.\d{2}\.\d{4}\b/.test(line));
+    const separatorIndex = lines.findIndex((line) => line.includes('────'));
+    const firstBlankIndex = lines.findIndex((line) => !line.trim());
+    const senderEndIndex = separatorIndex >= 0 ? separatorIndex : firstBlankIndex > 0 ? firstBlankIndex : 5;
     const doc = new Document({
       sections: [{
         properties: {
@@ -798,7 +801,7 @@ function ApplicationShell() {
             bold: index === 0 || index === subjectIndex,
             italics: index === 1,
             color: index === 2 ? '44546A' : '000000',
-            size: 22,
+            size: index < senderEndIndex ? 18 : 22,
           })],
           spacing: {
             before: index === subjectIndex ? 120 : 0,
@@ -1686,6 +1689,9 @@ function LetterPreview({ text }: { text: string }) {
   const lines = text.split('\n');
   const subjectIndex = lines.findIndex((line) => line.trim().toLowerCase().startsWith('bewerbung'));
   const dateIndex = lines.findIndex((line) => /\b\d{1,2}\.\d{1,2}\.\d{4}\b/.test(line));
+  const separatorIndex = lines.findIndex((line) => line.includes('────'));
+  const firstBlankIndex = lines.findIndex((line) => !line.trim());
+  const senderEndIndex = separatorIndex >= 0 ? separatorIndex : firstBlankIndex > 0 ? firstBlankIndex : 5;
 
   return (
     <aside className="letter-preview" aria-label="Anschreiben Vorschau">
@@ -1695,6 +1701,7 @@ function LetterPreview({ text }: { text: string }) {
           if (line.includes('────')) return <div key={`${index}-${line}`} className="preview-rule" />;
           if (!trimmed) return <div key={`${index}-blank`} className="preview-blank" />;
           const classNames = [
+            index < senderEndIndex ? 'preview-sender-line' : '',
             index === 0 ? 'preview-name' : '',
             index === 1 ? 'preview-qualification' : '',
             index === 2 ? 'preview-contact' : '',
@@ -2364,6 +2371,9 @@ function buildGoogleDocsRequests(text: string) {
   const lines = text.split('\n');
   const subjectLineIndex = lines.findIndex((line) => line.trim().toLowerCase().startsWith('bewerbung'));
   const dateLineIndex = lines.findIndex((line) => /\b\d{1,2}\.\d{1,2}\.\d{4}\b/.test(line));
+  const separatorLineIndex = lines.findIndex((line) => line.includes('────'));
+  const firstBlankLineIndex = lines.findIndex((line) => !line.trim());
+  const senderEndLineIndex = separatorLineIndex >= 0 ? separatorLineIndex : firstBlankLineIndex > 0 ? firstBlankLineIndex : 5;
   const lineStartIndexes = lines.reduce<number[]>((indexes, line, index) => {
     const previousStart = indexes[index - 1] ?? 1;
     indexes.push(index === 0 ? 1 : previousStart + lines[index - 1].length + 1);
@@ -2397,7 +2407,10 @@ function buildGoogleDocsRequests(text: string) {
     });
   };
 
-  styleRange(0, 'bold,fontSize', { bold: true, fontSize: { magnitude: 11, unit: 'PT' } });
+  for (let lineIndex = 0; lineIndex < senderEndLineIndex; lineIndex += 1) {
+    styleRange(lineIndex, 'fontSize', { fontSize: { magnitude: 9, unit: 'PT' } });
+  }
+  styleRange(0, 'bold,fontSize', { bold: true, fontSize: { magnitude: 9, unit: 'PT' } });
   styleRange(1, 'italic', { italic: true });
   if (subjectLineIndex >= 0) {
     styleRange(subjectLineIndex, 'bold', { bold: true });

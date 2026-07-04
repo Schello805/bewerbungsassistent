@@ -2950,15 +2950,18 @@ textarea:focus {
 .letter-preview {
   min-width: 0;
   max-width: 100%;
+  justify-content: center;
   padding: 14px;
 }
 
 .preview-page {
   min-width: 0;
+  width: min(100%, calc((var(--letter-pane-height) - 28px) / 1.414));
   max-width: 100%;
   height: calc(var(--letter-pane-height) - 28px);
   min-height: calc(var(--letter-pane-height) - 28px);
   max-height: calc(var(--letter-pane-height) - 28px);
+  aspect-ratio: 210 / 297;
 }
 
 .quality-panel {
@@ -3050,12 +3053,23 @@ textarea:focus {
   font-weight: 700;
 }
 
+.preview-sender-line {
+  font-size: 9pt !important;
+  line-height: 1.05;
+}
+
+.preview-name {
+  font-size: 9pt !important;
+}
+
 .preview-contact {
-  font-size: 11pt !important;
+  font-size: 9pt !important;
+  color: #475569 !important;
 }
 
 .preview-qualification {
-  font-size: 11pt;
+  font-size: 9pt !important;
+  font-style: italic;
 }
 
 /* Workflow page v2 */
