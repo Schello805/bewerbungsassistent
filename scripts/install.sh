@@ -161,7 +161,7 @@ install_app_dependencies() {
   success "Node-Abhängigkeiten installiert."
 
   log "Erstelle Produktionsbuild ..."
-  runuser -u "${SERVICE_USER}" -- bash -lc "cd '${APP_DIR}' && npm run build"
+  runuser -u "${SERVICE_USER}" -- bash -lc "cd '${APP_DIR}' && rm -rf dist && npm run build"
   success "Produktionsbuild erstellt."
 }
 
