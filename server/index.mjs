@@ -173,9 +173,10 @@ app.post('/api/update', async (_request, response) => {
     response.json({ ...result, logs: updateLogs.slice(-12) });
     setTimeout(() => process.exit(0), 1200);
   } catch (error) {
+    const message = formatUpdateError(error);
     updateInProgress = false;
-    addUpdateLog(error instanceof Error ? `Fehler: ${error.message}` : 'Update fehlgeschlagen.');
-    response.status(400).json({ error: error instanceof Error ? error.message : 'Update fehlgeschlagen.' });
+    addUpdateLog(`Fehler: ${message}`);
+    response.status(400).json({ error: message });
   }
 });
 
@@ -979,6 +980,25 @@ async function runSelfUpdate() {
 function addUpdateLog(message) {
   updateLogs.push({ at: new Date().toISOString(), message });
   if (updateLogs.length > 40) updateLogs.splice(0, updateLogs.length - 40);
+}
+
+function formatUpdateError(error) {
+  const rawMessage = error instanceof Error ? error.message : String(error || '');
+  const cleanMessage = rawMessage
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/npm warn deprecated[^\n]*/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/timed out|timeout/i.test(cleanMessage)) {
+    return 'Update hat zu lange gedauert. Bitte später erneut versuchen oder auf dem Server scripts/update.sh ausführen.';
+  }
+  if (/npm ci|npm|audited|packages/i.test(cleanMessage)) {
+    return 'Update konnte beim Installieren oder Bauen der Abhängigkeiten nicht abgeschlossen werden. Bitte erneut versuchen oder Server-Logs prüfen.';
+  }
+  if (/git|fast-forward|fetch|pull/i.test(cleanMessage)) {
+    return 'Update konnte den GitHub-Stand nicht sauber übernehmen. Bitte erneut versuchen oder scripts/update.sh auf dem Server ausführen.';
+  }
+  return cleanMessage.slice(0, 220) || 'Update fehlgeschlagen. Bitte Server-Logs prüfen.';
 }
 
 async function gitOutput(args) {

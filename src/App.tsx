@@ -782,10 +782,11 @@ function ApplicationShell() {
           alignment: index === dateIndex ? AlignmentType.RIGHT : AlignmentType.LEFT,
           children: [new TextRun({
             text: line.includes('────') ? ' ' : line || ' ',
+            font: 'Calibri',
             bold: index === 0 || index === subjectIndex,
             italics: index === 1,
             color: index === 2 ? '44546A' : '000000',
-            size: index === 0 ? 24 : index === subjectIndex ? 22 : 22,
+            size: 22,
           })],
           spacing: {
             before: index === subjectIndex ? 120 : 0,
@@ -2320,7 +2321,7 @@ function buildGoogleDocsRequests(text: string) {
     updateTextStyle: {
       range: { startIndex: 1, endIndex: Math.max(2, text.length + 1) },
       textStyle: {
-        weightedFontFamily: { fontFamily: 'Arial' },
+        weightedFontFamily: { fontFamily: 'Calibri' },
         fontSize: { magnitude: 11, unit: 'PT' },
       },
       fields: 'weightedFontFamily,fontSize',
@@ -2339,7 +2340,7 @@ function buildGoogleDocsRequests(text: string) {
     });
   };
 
-  styleRange(0, 'bold,fontSize', { bold: true, fontSize: { magnitude: 12, unit: 'PT' } });
+  styleRange(0, 'bold,fontSize', { bold: true, fontSize: { magnitude: 11, unit: 'PT' } });
   styleRange(1, 'italic', { italic: true });
   if (subjectLineIndex >= 0) {
     styleRange(subjectLineIndex, 'bold', { bold: true });
