@@ -173,7 +173,7 @@ function ApplicationShell() {
   const [activeLetterId, setActiveLetterId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<AiCandidate[]>([]);
   const [activeCandidateIndex, setActiveCandidateIndex] = useState(0);
-  const [view, setView] = useState<'apply' | 'settings'>('apply');
+  const [view, setView] = useState<'apply' | 'versions' | 'settings'>('apply');
   const [voice, setVoice] = useState(voiceOptions[0]);
   const [provider, setProvider] = useState(providerOptions[0]);
   const [apiKey, setApiKey] = useState('');
@@ -212,6 +212,8 @@ function ApplicationShell() {
   const bestCandidateIndex = getBestCandidateIndex(candidates);
   const profileEvidence = getProfileEvidence(profile);
   const matchItems = useMemo(() => createMatchItems(jobInput, profileEvidence), [jobInput, profileEvidence]);
+  const matchedRequirementCount = matchItems.filter((item) => item.matches.length > 0).length;
+  const matchingPercent = matchItems.length > 0 ? Math.round((matchedRequirementCount / matchItems.length) * 100) : 0;
   const cvSuggestions = useMemo(() => createCvSuggestions(jobInput, matchItems, profileEvidence), [jobInput, matchItems, profileEvidence]);
   const qualityChecks = useMemo(() => createQualityChecks(draft, jobDetails, profileEvidence), [draft, jobDetails, profileEvidence]);
   const passedQualityChecks = qualityChecks.filter((check) => check.ok).length;
@@ -1023,12 +1025,13 @@ function ApplicationShell() {
           </a>
           <div className="view-switch" aria-label="Ansicht wechseln">
             <button type="button" className={view === 'apply' ? 'active' : ''} onClick={() => setView('apply')}>Bewerbung</button>
+            <button type="button" className={view === 'versions' ? 'active' : ''} onClick={() => setView('versions')}>Versionen</button>
             <button type="button" className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Einstellungen</button>
           </div>
         </nav>
       </header>
 
-      <main className={view === 'apply' ? 'app-main apply-main' : 'app-main settings-main'}>
+      <main className={view === 'apply' ? 'app-main apply-main' : view === 'versions' ? 'app-main versions-main' : 'app-main settings-main'}>
         {view === 'apply' ? (
         <>
         <section className="workflow-strip" aria-label="Workflow">
@@ -1061,60 +1064,71 @@ function ApplicationShell() {
             <p className="compare-cost-note">Hinweis: Beim Vergleich wird jede verfügbare KI separat abgefragt. Dadurch können je Anbieter zusätzliche Kosten entstehen.</p>
           </article>
 
-          <aside className="panel analysis-panel">
-            <p className="eyebrow">Analyse</p>
-            <h2>{jobInput.trim() ? jobDetails.subject : 'Bereit für die Stellenanzeige'}</h2>
-            <p>{jobInput.trim() ? 'Empfänger, Betreff und gewünschte Zusatzangaben werden aus Link oder Text abgeleitet.' : 'Link oder Text einfügen, danach wird das Anschreiben erstellt.'}</p>
-            <div className="analysis-summary">
-              <span>{documents.length} Unterlagen</span>
-              <span>{hasApiKey ? provider : 'Lokale Vorlage'}</span>
-              <span>{voice}</span>
-              {profile.insights?.skills?.[0] && <span>{profile.insights.skills.slice(0, 3).join(' · ')}</span>}
+        </section>
+
+        <section className="panel analysis-panel compact-analysis-panel">
+          <div className="analysis-heading-row">
+            <div>
+              <p className="eyebrow">Analyse</p>
+              <h2>{jobInput.trim() ? 'Stellenmatching' : 'Bereit für die Stellenanzeige'}</h2>
+              <p>{jobInput.trim() ? jobDetails.subject : 'Link oder Text einfügen, danach werden Anforderungen mit deinem Profil abgeglichen.'}</p>
+              {profileAutoFillStatus && <p className="document-status">{profileAutoFillStatus}</p>}
             </div>
-            <div className="profile-start-card">
-              <div>
-                <strong>Profilbasis</strong>
-                <p>
-                  {profileEvidence.length > 0
-                    ? `${profileEvidence.length} erkannte Profilpunkte stehen für dein Anschreiben bereit.`
-                    : 'Noch keine Profilpunkte erkannt. Lade Unterlagen hoch oder ergänze dein Profil.'}
-                </p>
-                {profileAutoFillStatus && <small>{profileAutoFillStatus}</small>}
+            <button type="button" className="text-button" onClick={() => setView('settings')}>Profil öffnen</button>
+          </div>
+          <div className="matching-score-grid" aria-label="Stellenmatching Kennzahlen">
+            <article>
+              <span>Erkannt</span>
+              <strong>{matchItems.length}</strong>
+              <small>Anforderungen aus der Stelle</small>
+            </article>
+            <article>
+              <span>Treffer</span>
+              <strong>{matchedRequirementCount}</strong>
+              <small>mit deinen Qualifikationen</small>
+            </article>
+            <article className={matchingPercent >= 60 ? 'score-good' : matchingPercent >= 35 ? 'score-medium' : 'score-low'}>
+              <span>Matching</span>
+              <strong>{matchingPercent}%</strong>
+              <small>{profileEvidence.length} Profilpunkte verfügbar</small>
+            </article>
+          </div>
+          <details className="analysis-details">
+            <summary>Details anzeigen</summary>
+            <div className="analysis-details-grid">
+              <div className="analysis-block">
+                <h3>Erkannte Qualifikationen</h3>
+                {profileEvidence.length > 0 ? (
+                  <div className="evidence-tags">
+                    {profileEvidence.slice(0, 12).map((item) => <span key={item}>{item}</span>)}
+                  </div>
+                ) : (
+                  <p>Noch keine verwertbaren Qualifikationen erkannt. Bitte Unterlagen hochladen oder prüfen.</p>
+                )}
               </div>
-              <button type="button" className="text-button" onClick={() => setView('settings')}>Profil öffnen</button>
+              <div className="analysis-block">
+                <h3>Stellen-Matching</h3>
+                <ul className="match-list">
+                  {matchItems.map((item) => (
+                    <li key={item.requirement} className={item.matches.length > 0 ? 'match-ok' : 'match-missing'}>
+                      <strong>{item.requirement}</strong>
+                      <span>{item.matches.length > 0 ? item.matches.join(' · ') : 'Noch kein passender Profilbeleg erkannt'}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="analysis-block">
+                <h3>Lebenslauf optimieren</h3>
+                <ul className="match-list">
+                  {cvSuggestions.map((suggestion) => (
+                    <li key={suggestion} className="match-ok">
+                      <strong>{suggestion}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
-            <div className="analysis-block">
-              <h3>Erkannte Qualifikationen</h3>
-              {profileEvidence.length > 0 ? (
-                <div className="evidence-tags">
-                  {profileEvidence.slice(0, 10).map((item) => <span key={item}>{item}</span>)}
-                </div>
-              ) : (
-                <p>Noch keine verwertbaren Qualifikationen erkannt. Bitte Unterlagen hochladen oder prüfen.</p>
-              )}
-            </div>
-            <div className="analysis-block">
-              <h3>Stellen-Matching</h3>
-              <ul className="match-list">
-                {matchItems.map((item) => (
-                  <li key={item.requirement} className={item.matches.length > 0 ? 'match-ok' : 'match-missing'}>
-                    <strong>{item.requirement}</strong>
-                    <span>{item.matches.length > 0 ? item.matches.join(' · ') : 'Noch kein passender Profilbeleg erkannt'}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="analysis-block">
-              <h3>Lebenslauf optimieren</h3>
-              <ul className="match-list">
-                {cvSuggestions.map((suggestion) => (
-                  <li key={suggestion} className="match-ok">
-                    <strong>{suggestion}</strong>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </aside>
+          </details>
         </section>
 
         <section id="editor" className="section editor-section">
@@ -1170,7 +1184,7 @@ function ApplicationShell() {
                 </div>
               </section>
             )}
-            <section className="saved-letters" aria-label="Gespeicherte Anschreiben">
+            <section className="candidate-list-panel" aria-label="KI-Vergleich">
               {candidates.length > 0 && (
                 <div className="candidate-list">
                   <div className="candidate-head">
@@ -1222,109 +1236,120 @@ function ApplicationShell() {
                   )}
                 </div>
               )}
-              <div>
-                <h3>Gespeicherte Versionen</h3>
-                {letterStatus && <p>{letterStatus}</p>}
-              </div>
-              {letters.length === 0 ? (
-                <p>Noch keine fertige Version gespeichert.</p>
-              ) : (
-                <ul>
-                  {letters.map((letter) => (
-                    <li key={letter.id}>
-                      <span>{letter.title}</span>
-                      <small>{new Date(letter.updatedAt).toLocaleString('de-DE')} · {formatFileSize(letter.size)}</small>
-                      <div className="saved-letter-actions">
-                        <button type="button" onClick={() => openLetter(letter.id)}>Öffnen</button>
-                        <button type="button" className="danger-button" onClick={() => deleteLetter(letter.id)}>Löschen</button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-            <section className="saved-letters application-history" aria-label="Bewerbungs-Historie">
-              <div>
-                <h3>Bewerbungs-Historie</h3>
-                <p>Status manuell aktualisieren. Jeder Statuswechsel erhält automatisch einen Zeitstempel.</p>
-              </div>
-              <div className="application-filter-bar">
-                <input value={applicationSearch} onChange={(event) => setApplicationSearch(event.target.value)} placeholder="Firma, Stelle oder Notiz suchen ..." />
-                <select value={applicationStatusFilter} onChange={(event) => setApplicationStatusFilter(event.target.value as ApplicationStatus | 'Alle')}>
-                  <option>Alle</option>
-                  {applicationStatuses.map((status) => <option key={status}>{status}</option>)}
-                </select>
-                <button type="button" className={showDueOnly ? 'filter-toggle active' : 'filter-toggle'} onClick={() => setShowDueOnly((value) => !value)}>
-                  Offene Wiedervorlagen
-                </button>
-              </div>
-              {applications.length === 0 ? (
-                <p>Noch keine Bewerbung gespeichert.</p>
-              ) : filteredApplications.length === 0 ? (
-                <p>Keine Bewerbung passt zum aktuellen Filter.</p>
-              ) : (
-                <ul>
-                  {filteredApplications.map((application) => (
-                    <li key={application.id}>
-                      <span>
-                        {application.title}
-                        {application.jobUrl && (
-                          <a className="job-link" href={application.jobUrl} target="_blank" rel="noreferrer">
-                            <ExternalLink size={13} /> Stellenanzeige
-                          </a>
-                        )}
-                      </span>
-                      <small>
-                        {application.company ? `${application.company} · ` : ''}
-                        {application.status} seit {new Date(application.statusUpdatedAt).toLocaleString('de-DE')}
-                        {application.followUpAt ? ` · Wiedervorlage: ${new Date(application.followUpAt).toLocaleDateString('de-DE')}` : ''}
-                      </small>
-                      <div className="saved-letter-actions">
-                        <select value={application.status} onChange={(event) => updateApplicationStatus(application.id, event.target.value as ApplicationStatus)}>
-                          {applicationStatuses.map((status) => <option key={status}>{status}</option>)}
-                        </select>
-                        {application.letterId && <button type="button" onClick={() => openLetter(application.letterId || '')}>Anschreiben öffnen</button>}
-                      </div>
-                      <div className="application-meta-grid">
-                        <label>
-                          Link
-                          <input
-                            value={application.jobUrl || ''}
-                            onChange={(event) => setApplications((current) => current.map((item) => item.id === application.id ? { ...item, jobUrl: event.target.value } : item))}
-                            onBlur={(event) => updateApplicationMeta(application, { jobUrl: event.target.value })}
-                            placeholder="https://..."
-                          />
-                        </label>
-                        <label>
-                          Wiedervorlage
-                          <input
-                            type="date"
-                            value={(application.followUpAt || '').slice(0, 10)}
-                            onChange={(event) => {
-                              const value = event.target.value;
-                              setApplications((current) => current.map((item) => item.id === application.id ? { ...item, followUpAt: value } : item));
-                              updateApplicationMeta(application, { followUpAt: value });
-                            }}
-                          />
-                        </label>
-                      </div>
-                      <label className="application-notes">
-                        Notizen
-                        <textarea
-                          value={application.notes || ''}
-                          onChange={(event) => setApplications((current) => current.map((item) => item.id === application.id ? { ...item, notes: event.target.value } : item))}
-                          onBlur={(event) => updateApplicationMeta(application, { notes: event.target.value })}
-                          placeholder="z. B. Ansprechpartner, Rückmeldung, nächste Schritte ..."
-                        />
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </section>
           </div>
         </section>
         </>
+        ) : view === 'versions' ? (
+        <section className="versions-page">
+          <section className="panel saved-letters" aria-label="Gespeicherte Anschreiben">
+            <div className="panel-header compact-header">
+              <div>
+                <p className="eyebrow">Archiv</p>
+                <h2>Gespeicherte Versionen</h2>
+                <p>{letterStatus || 'Fertige Anschreiben werden hier gesammelt.'}</p>
+              </div>
+              <button type="button" className="button primary" onClick={() => setView('apply')}>Neue Bewerbung</button>
+            </div>
+            {letters.length === 0 ? (
+              <p>Noch keine fertige Version gespeichert.</p>
+            ) : (
+              <ul>
+                {letters.map((letter) => (
+                  <li key={letter.id}>
+                    <span>{letter.title}</span>
+                    <small>{new Date(letter.updatedAt).toLocaleString('de-DE')} · {formatFileSize(letter.size)}</small>
+                    <div className="saved-letter-actions">
+                      <button type="button" onClick={() => openLetter(letter.id)}>Öffnen</button>
+                      <button type="button" className="danger-button" onClick={() => deleteLetter(letter.id)}>Löschen</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="panel saved-letters application-history" aria-label="Bewerbungs-Historie">
+            <div>
+              <p className="eyebrow">Status</p>
+              <h2>Bewerbungs-Historie</h2>
+              <p>Status manuell aktualisieren. Jeder Statuswechsel erhält automatisch einen Zeitstempel.</p>
+            </div>
+            <div className="application-filter-bar">
+              <input value={applicationSearch} onChange={(event) => setApplicationSearch(event.target.value)} placeholder="Firma, Stelle oder Notiz suchen ..." />
+              <select value={applicationStatusFilter} onChange={(event) => setApplicationStatusFilter(event.target.value as ApplicationStatus | 'Alle')}>
+                <option>Alle</option>
+                {applicationStatuses.map((status) => <option key={status}>{status}</option>)}
+              </select>
+              <button type="button" className={showDueOnly ? 'filter-toggle active' : 'filter-toggle'} onClick={() => setShowDueOnly((value) => !value)}>
+                Offene Wiedervorlagen
+              </button>
+            </div>
+            {applications.length === 0 ? (
+              <p>Noch keine Bewerbung gespeichert.</p>
+            ) : filteredApplications.length === 0 ? (
+              <p>Keine Bewerbung passt zum aktuellen Filter.</p>
+            ) : (
+              <ul>
+                {filteredApplications.map((application) => (
+                  <li key={application.id}>
+                    <span>
+                      {application.title}
+                      {application.jobUrl && (
+                        <a className="job-link" href={application.jobUrl} target="_blank" rel="noreferrer">
+                          <ExternalLink size={13} /> Stellenanzeige
+                        </a>
+                      )}
+                    </span>
+                    <small>
+                      {application.company ? `${application.company} · ` : ''}
+                      {application.status} seit {new Date(application.statusUpdatedAt).toLocaleString('de-DE')}
+                      {application.followUpAt ? ` · Wiedervorlage: ${new Date(application.followUpAt).toLocaleDateString('de-DE')}` : ''}
+                    </small>
+                    <div className="saved-letter-actions">
+                      <select value={application.status} onChange={(event) => updateApplicationStatus(application.id, event.target.value as ApplicationStatus)}>
+                        {applicationStatuses.map((status) => <option key={status}>{status}</option>)}
+                      </select>
+                      {application.letterId && <button type="button" onClick={() => openLetter(application.letterId || '')}>Anschreiben öffnen</button>}
+                    </div>
+                    <div className="application-meta-grid">
+                      <label>
+                        Link
+                        <input
+                          value={application.jobUrl || ''}
+                          onChange={(event) => setApplications((current) => current.map((item) => item.id === application.id ? { ...item, jobUrl: event.target.value } : item))}
+                          onBlur={(event) => updateApplicationMeta(application, { jobUrl: event.target.value })}
+                          placeholder="https://..."
+                        />
+                      </label>
+                      <label>
+                        Wiedervorlage
+                        <input
+                          type="date"
+                          value={(application.followUpAt || '').slice(0, 10)}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setApplications((current) => current.map((item) => item.id === application.id ? { ...item, followUpAt: value } : item));
+                            updateApplicationMeta(application, { followUpAt: value });
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <label className="application-notes">
+                      Notizen
+                      <textarea
+                        value={application.notes || ''}
+                        onChange={(event) => setApplications((current) => current.map((item) => item.id === application.id ? { ...item, notes: event.target.value } : item))}
+                        onBlur={(event) => updateApplicationMeta(application, { notes: event.target.value })}
+                        placeholder="z. B. Ansprechpartner, Rückmeldung, nächste Schritte ..."
+                      />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </section>
         ) : (
         <section className="settings-page">
           <article id="stammdaten" className="panel master-data-panel">
