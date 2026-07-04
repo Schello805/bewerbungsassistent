@@ -60,18 +60,29 @@ export function Footer() {
   async function runUpdate() {
     setIsUpdating(true);
     setStatus('Update läuft ...');
+    setMaintenanceVisible(true);
+    setMaintenanceMessage('Update wird vorbereitet. Bitte diese Seite offen lassen ...');
     try {
       const response = await fetch('/api/update', { method: 'POST' });
       const data = await response.json() as { message?: string; error?: string; updated?: boolean };
       if (!response.ok) throw new Error(data.error || 'Update fehlgeschlagen.');
       setStatus(data.message || 'Update abgeschlossen.');
       if (data.updated) {
-        setMaintenanceVisible(true);
-        setMaintenanceMessage('Update installiert. Der Dienst startet gerade neu ...');
+        setMaintenanceMessage('Update wird installiert. Der Dienst startet gleich neu ...');
         waitForRestart();
+      } else {
+        setMaintenanceVisible(false);
+        reconnectStarted.current = false;
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Update fehlgeschlagen.');
+      if (error instanceof TypeError) {
+        setMaintenanceMessage('Verbindung wurde während des Updates unterbrochen. Ich verbinde automatisch neu ...');
+        waitForRestart();
+      } else {
+        setMaintenanceVisible(false);
+        reconnectStarted.current = false;
+        setStatus(error instanceof Error ? error.message : 'Update fehlgeschlagen.');
+      }
     } finally {
       setIsUpdating(false);
     }
