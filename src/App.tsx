@@ -1722,7 +1722,7 @@ function LetterPreview({ text }: { text: string }) {
 
 function ProfileStructureSummary({ profile }: { profile: ProfileData }) {
   const structured = profile.structured;
-  const groups = [
+  const rawGroups: Array<[string, string[]]> = [
     ['Stationen', structured?.stations ?? []],
     ['Skills', structured?.skills ?? []],
     ['Zertifikate', structured?.certificates ?? []],
@@ -1732,7 +1732,8 @@ function ProfileStructureSummary({ profile }: { profile: ProfileData }) {
     ['Führung', structured?.leadership ?? []],
     ['QM / Audit', structured?.quality ?? []],
     ['Tools', structured?.tools ?? []],
-  ] as const;
+  ];
+  const groups = rawGroups.map(([label, values]) => [label, values.filter(isCleanProfilePoint).slice(0, 12)] as const);
   const visibleGroups = groups.filter(([, values]) => values.length > 0);
 
   if (visibleGroups.length === 0) {
@@ -1751,6 +1752,15 @@ function ProfileStructureSummary({ profile }: { profile: ProfileData }) {
       ))}
     </div>
   );
+}
+
+function isCleanProfilePoint(value: string) {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (!value.trim() || value.length > 90 || words.length > 9) return false;
+  if (/[.!?]/.test(value)) return false;
+  if (/\b(?:herr|frau)\s+schellenberger\b/i.test(value)) return false;
+  if (/\b(?:übernahm|überwachte|forderte|erstellte|absolvierte|vorgesetzter|mietvertrag|versicherungsschutz|rufbereitschaft|ansprechpartner)\b/i.test(value)) return false;
+  return true;
 }
 
 function TextField({ label, value, onChange, onFocus }: { label: string; value: string; onChange: (value: string) => void; onFocus?: () => void }) {

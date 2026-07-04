@@ -1522,8 +1522,27 @@ function extractProfileInsights(text) {
     'Messtechnik', 'SAP', 'Excel', 'Power BI', 'Führung', 'Teamführung', 'Controlling',
     'Vertrieb', 'Einkauf', 'Produktion', 'Logistik', 'IT', 'Digitalisierung', 'Betriebswirtschaft',
   ];
-  const rolePattern = /\b(?:Qualitätsmanager|Qualitätsmanagementbeauftragter|QMB|Qualitätsmanagement-Beauftragter|Qualitätsmanagementbeauftragter|Qualitätsmanagementbeauftragte|Betriebswirt|Projektleiter|Teamleiter|Auditor|Controller|Manager|Sachbearbeiter|Leiter|Koordinator|Beauftragter)[\wäöüß /.-]*/gi;
-  const educationPattern = /\b(?:staatl\.?\s*gepr\.?\s*Betriebswirt|staatlich geprüfter Betriebswirt|Bachelor|Master|Ausbildung|Studium|Zertifikat|Certificate|IHK|Techniker|Auditor|Coursera|Abschluss)[\wäöüß /.-]*/gi;
+  const rolePatterns = [
+    /\bQualitätsmanager(?:in)?\b/gi,
+    /\bQualitätsmanagementbeauftrag(?:ter|te)\b/gi,
+    /\bQualitätsmanagement-Beauftrag(?:ter|te)\b/gi,
+    /\bQMB\b/gi,
+    /\bBetriebswirt(?:in)?\b/gi,
+    /\bProjektleiter(?:in)?\b/gi,
+    /\bTeamleiter(?:in)?\b/gi,
+    /\bAuditor(?:in)?\b/gi,
+    /\bController(?:in)?\b/gi,
+  ];
+  const educationPatterns = [
+    /\bstaatl\.?\s*gepr\.?\s*Betriebswirt\b/gi,
+    /\bstaatlich geprüfter Betriebswirt\b/gi,
+    /\bKaufmann im Groß- und Außenhandel\b/gi,
+    /\bFachrichtung Großhandel\b/gi,
+    /\bIHK\b/gi,
+    /\bBachelor\b/gi,
+    /\bMaster\b/gi,
+    /\bTechniker\b/gi,
+  ];
   const strengthPatterns = [
     'strukturiert', 'zuverlässig', 'analytisch', 'kommunikationsstark', 'eigenverantwortlich',
     'lösungsorientiert', 'teamfähig', 'kundenorientiert', 'praxisnah', 'verantwortungsvoll',
@@ -1531,8 +1550,8 @@ function extractProfileInsights(text) {
 
   return {
     skills: uniqueMatches(skillPatterns.filter((skill) => new RegExp(`\\b${escapeRegExp(skill)}\\b`, 'i').test(normalized))).slice(0, 14),
-    roles: uniqueMatches(normalized.match(rolePattern) ?? []).slice(0, 8),
-    education: uniqueMatches(normalized.match(educationPattern) ?? []).slice(0, 8),
+    roles: uniqueProfilePoints(rolePatterns.flatMap((pattern) => normalized.match(pattern) ?? [])).slice(0, 8),
+    education: uniqueProfilePoints(educationPatterns.flatMap((pattern) => normalized.match(pattern) ?? [])).slice(0, 8),
     strengths: uniqueMatches(strengthPatterns.filter((strength) => new RegExp(`\\b${escapeRegExp(strength)}\\b`, 'i').test(normalized))).slice(0, 10),
   };
 }
@@ -1551,6 +1570,13 @@ function extractStructuredProfile(text, documents = []) {
   const leadership = matchKnownTerms(normalized, ['Führung', 'Teamführung', 'Leitung', 'Projektleitung', 'Verantwortung', 'Koordination', 'Head', 'Manager']).slice(0, 10);
   const quality = matchKnownTerms(normalized, ['Qualitätsmanagement', 'Qualitätssicherung', 'QMB', 'VDA 6.3', 'ISO 9001', 'IATF 16949', 'Audit', 'Auditor', '8D', 'FMEA', 'APQP', 'PPAP']).slice(0, 14);
   const tools = matchKnownTerms(normalized, ['SAP', 'Excel', 'Power BI', 'MS Office', 'ERP', 'CAQ', 'Ollama', 'Google Docs']).slice(0, 10);
+  const certificateDocuments = documents
+    .filter((document) => document.type === 'Zertifikate' || /zertifikat|certificate|coursera|vda|iso|audit|qmb/i.test(document.fileName))
+    .map((document) => cleanDocumentProfilePoint(document.fileName));
+  const certificates = uniqueProfilePoints([
+    ...certificateDocuments,
+    ...matchKnownTerms(normalized, ['VDA 6.3', 'ISO 9001', 'ISO 14001', 'IATF 16949', 'QMB', 'Auditor', 'Audit', 'Lean', 'KAIZEN', 'KVP', '8D', 'FMEA', 'APQP', 'PPAP']),
+  ]).slice(0, 12);
   const experience = uniqueMatches([
     ...(normalized.match(/\b\d{1,2}\s*(?:Jahre|Jahren)\s+(?:Berufserfahrung|Erfahrung|Praxis)\b/gi) ?? []),
     ...(normalized.match(/\b(?:seit|von)\s+\d{4}\b[^.]{0,80}/gi) ?? []),
@@ -1564,7 +1590,7 @@ function extractStructuredProfile(text, documents = []) {
   return {
     stations,
     skills: insights.skills ?? [],
-    certificates: uniqueMatches([...(insights.education ?? []), ...quality.filter((item) => /vda|iso|iatf|audit|qmb|zertifikat/i.test(item))]).slice(0, 12),
+    certificates,
     experience,
     responsibilities,
     industries,
@@ -1576,6 +1602,36 @@ function extractStructuredProfile(text, documents = []) {
 
 function matchKnownTerms(text, terms) {
   return uniqueMatches(terms.filter((term) => new RegExp(`\\b${escapeRegExp(term)}\\b`, 'i').test(text)));
+}
+
+function cleanDocumentProfilePoint(fileName) {
+  return path.basename(fileName)
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b(?:Michael|Schellenberger|Zertifikat|Certificate|Coursera)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function uniqueProfilePoints(values) {
+  return uniqueMatches(values)
+    .map((value) => normalizeText(value)
+      .replace(/^zertifikat\s+/i, '')
+      .replace(/^certificate\s+/i, '')
+      .replace(/[.,;:]+$/g, '')
+      .trim())
+    .filter(isConciseProfilePoint);
+}
+
+function isConciseProfilePoint(value) {
+  if (!value) return false;
+  const words = value.split(/\s+/).filter(Boolean);
+  if (value.length > 80 || words.length > 8) return false;
+  if (/[.!?]/.test(value)) return false;
+  if (/\b(?:herr|frau)\s+schellenberger\b/i.test(value)) return false;
+  if (/\b(?:übernahm|überwachte|forderte|erstellte|absolvierte|durchlaufen|vorgesetzter|mietvertrag|versicherungsschutz|rufbereitschaft|ansprechpartner)\b/i.test(value)) return false;
+  if (/^\d+$/.test(value)) return false;
+  return true;
 }
 
 function extractProfileEvidence(text, documents = []) {
