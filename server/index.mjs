@@ -25,6 +25,7 @@ const port = Number(process.env.PORT || 5173);
 const host = process.env.HOST || '0.0.0.0';
 const isProduction = process.env.NODE_ENV === 'production';
 const execFileAsync = promisify(execFile);
+const packageJson = JSON.parse(await fs.readFile(path.join(rootDir, 'package.json'), 'utf8'));
 let updateInProgress = false;
 const updateLogs = [];
 
@@ -101,6 +102,10 @@ const upload = multer({
 
 app.get('/api/health', (_request, response) => {
   response.json({ ok: true });
+});
+
+app.get('/api/app-info', async (_request, response) => {
+  response.json(await getAppInfo());
 });
 
 app.get('/api/documents', async (_request, response, next) => {
@@ -964,6 +969,26 @@ async function getUpdateStatus() {
       updating: updateInProgress,
       logs: updateLogs.slice(-12),
       error: error instanceof Error ? error.message : 'Update-Status konnte nicht geprüft werden.',
+    };
+  }
+}
+
+async function getAppInfo() {
+  try {
+    const commitCount = await gitOutput(['rev-list', '--count', 'HEAD']);
+    const commitHash = await gitOutput(['rev-parse', '--short', 'HEAD']);
+    return {
+      ok: true,
+      version: packageJson.version,
+      revision: `r${commitCount}-${commitHash}`,
+      commitCount: Number(commitCount),
+      commitHash,
+    };
+  } catch {
+    return {
+      ok: false,
+      version: packageJson.version,
+      revision: null,
     };
   }
 }

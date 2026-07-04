@@ -26,6 +26,7 @@ Lokale Netzwerk-App zum Erstellen, Vergleichen, Bearbeiten und Verwalten von Bew
 - gespeicherte Anschreiben öffnen, weiterbearbeiten und löschen
 - Backup, Export und Restore für Datenbank, Unterlagen und Einstellungen
 - Update-Prüfung und Update-Button im Footer
+- Footer-Revision wird live aus dem aktuellen Git-Stand berechnet
 
 ## Installation auf Debian 13 oder Ubuntu 24.04
 
@@ -101,6 +102,8 @@ Das Updatescript führt automatisch aus:
 - Status und URL ausgeben
 
 In der Webapp kann zusätzlich der Update-Button im Footer genutzt werden. Dafür muss die App aus einem Git-Checkout laufen und Zugriff auf das Repository haben. Nach einem erfolgreichen Update startet der Serverprozess neu.
+
+Die Rev.-Nummer im Footer wird beim Laden der App aus dem aktuellen Git-Stand des Servers berechnet (`r<Commit-Anzahl>-<Commit-Hash>`). Nach einem Update oder Push mit anschließendem Server-Update zeigt der Footer automatisch die neue Revision.
 
 ## Betrieb
 
