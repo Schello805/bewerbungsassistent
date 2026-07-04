@@ -544,12 +544,15 @@ function ApplicationShell() {
     setIsGenerating(true);
     setLetterStatus('');
     setCandidates([]);
+    let fallbackJobDetails = extractJobDetails(jobInput);
     try {
       const resolvedJobInput = await resolveJobInput(jobInput);
       if (resolvedJobInput !== jobInput) {
         setJobInput(resolvedJobInput);
       }
       const resolvedJobDetails = extractJobDetails(resolvedJobInput);
+      fallbackJobDetails = resolvedJobDetails;
+      console.log('[JobExtraction]', resolvedJobDetails);
 
       if (!hasApiKey) {
         setDraft(createDraft({ personalData, jobDetails: resolvedJobDetails, profile }));
@@ -586,7 +589,7 @@ function ApplicationShell() {
       setCostEstimate(estimateAiCost(provider, `${resolvedJobInput}\n${profileEvidence.join('\n')}`, nextDraft));
       setActiveLetterId(null);
     } catch (error) {
-      setDraft(createDraft({ personalData, jobDetails, profile }));
+      setDraft(createDraft({ personalData, jobDetails: fallbackJobDetails, profile }));
       setLetterStatus(error instanceof Error ? `KI nicht verfügbar: ${error.message}` : 'KI nicht verfügbar. Lokale Vorlage erstellt.');
     } finally {
       setIsGenerating(false);
