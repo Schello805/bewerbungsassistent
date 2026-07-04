@@ -26,6 +26,7 @@ const host = process.env.HOST || '0.0.0.0';
 const isProduction = process.env.NODE_ENV === 'production';
 const execFileAsync = promisify(execFile);
 const packageJson = JSON.parse(await fs.readFile(path.join(rootDir, 'package.json'), 'utf8'));
+const runtimeAppInfo = await readRuntimeAppInfo();
 let updateInProgress = false;
 let updateTargetRevision = null;
 const updateLogs = [];
@@ -981,6 +982,10 @@ async function getUpdateStatus() {
 }
 
 async function getAppInfo() {
+  return runtimeAppInfo;
+}
+
+async function readRuntimeAppInfo() {
   try {
     const commitCount = await gitOutput(['rev-list', '--count', 'HEAD']);
     const commitHash = await gitOutput(['rev-parse', '--short', 'HEAD']);
