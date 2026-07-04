@@ -656,9 +656,20 @@ if (isProduction) {
       }
     },
   }));
-  app.get(/.*/, (_request, response) => {
+  app.use(async (request, response, next) => {
+    if (request.method !== 'GET' || request.path.startsWith('/api/')) {
+      next();
+      return;
+    }
+
+    const indexPath = path.join(distDir, 'index.html');
     response.set('Cache-Control', 'no-store');
-    response.sendFile(path.join(distDir, 'index.html'));
+    try {
+      await fs.access(indexPath);
+      response.sendFile(indexPath);
+    } catch {
+      response.status(503).type('html').send('<!doctype html><html lang="de"><head><meta charset="utf-8"><meta http-equiv="refresh" content="2"><title>Update läuft</title></head><body style="font-family:Arial,sans-serif;padding:32px;background:#f3f6fb;color:#111827"><h1>Update läuft</h1><p>Die App wird gerade neu gebaut. Diese Seite lädt automatisch neu.</p></body></html>');
+    }
   });
 } else {
   const hmrPort = await findAvailablePort(Number(process.env.HMR_PORT || 5174));
