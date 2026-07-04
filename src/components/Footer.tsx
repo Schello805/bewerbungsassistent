@@ -7,6 +7,7 @@ const pendingBootKey = 'bewerbungsassistent.pendingUpdateBootId';
 
 type AppInfo = {
   revision?: string | null;
+  version?: string | null;
   bootId?: string | null;
 };
 
@@ -19,6 +20,7 @@ export function Footer() {
     ? 'Update läuft noch. Ich verbinde automatisch wieder ...'
     : 'Update wird installiert ...');
   const [revision, setRevision] = useState(__APP_REVISION__);
+  const [version, setVersion] = useState(__APP_VERSION__);
   const bootIdRef = useRef<string | null>(getPendingUpdateBootId());
   const reconnectStarted = useRef(false);
 
@@ -37,6 +39,7 @@ export function Footer() {
           if (response.ok) {
             const data = await response.json() as AppInfo;
             if (data.revision) setRevision(data.revision);
+            if (data.version) setVersion(data.version);
             if (data.bootId && !bootIdRef.current) {
               bootIdRef.current = data.bootId;
               setPendingUpdateBootId(data.bootId);
@@ -113,6 +116,7 @@ export function Footer() {
       const data = await response.json() as AppInfo;
       const pendingRevision = getPendingUpdateRevision();
       const pendingBootId = getPendingUpdateBootId();
+      if (data.version) setVersion(data.version);
       if (data.bootId) {
         if (!pendingRevision) {
           bootIdRef.current = data.bootId;
@@ -193,7 +197,7 @@ export function Footer() {
         <div>
           <strong>Bewerbungsassistent</strong>
           <p>
-            Open Source von Michael Schellenberger · Rev. {revision}
+            Open Source von Michael Schellenberger · Version v{version} · Rev. {revision}
           </p>
         </div>
         <nav aria-label="Rechtliche Links">

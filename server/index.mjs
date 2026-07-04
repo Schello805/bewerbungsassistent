@@ -1018,9 +1018,10 @@ async function readRuntimeAppInfo() {
   try {
     const commitCount = await gitOutput(['rev-list', '--count', 'HEAD']);
     const commitHash = await gitOutput(['rev-parse', '--short', 'HEAD']);
+    const version = `0.1.${commitCount}`;
     return {
       ok: true,
-      version: packageJson.version,
+      version,
       revision: `r${commitCount}-${commitHash}`,
       commitCount: Number(commitCount),
       commitHash,
