@@ -2302,17 +2302,18 @@ function extractJobSource(text: string, url: string) {
 }
 
 function extractCompany(text: string) {
-  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
-  const labelMatch = text.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([^\n]{3,90})/i)?.[1];
+  const primaryText = getPrimaryJobText(text);
+  const lines = primaryText.split('\n').map((line) => line.trim()).filter(Boolean);
+  const labelMatch = primaryText.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([^\n]{3,90})/i)?.[1];
   if (labelMatch) return cleanRecipientValue(labelMatch);
-  const normalized = text.replace(/\s+/g, ' ');
+  const normalized = primaryText.replace(/\s+/g, ' ');
   const teilkonzernMatch = normalized.match(/Teilkonzern:\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})(?:\s+Start:|\s+Bewerber|\s+Das sind|\s+Standort:)/i)?.[1];
   if (teilkonzernMatch) return cleanRecipientValue(teilkonzernMatch);
   const companyDetailsMatch = normalized.match(/Unternehmens-Details\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})(?:\s+Mess|\s+Maschinen|\s+Automotive|\s+Nürnberg|\s+Deutschland|\s+Ähnliche Jobs)/i)?.[1];
   if (companyDetailsMatch) return cleanRecipientValue(companyDetailsMatch);
   const introMatch = normalized.match(/\bBei\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})\s+(?:verbinden|entwickeln|arbeiten|stehen|setzen)\s+wir\b/i)?.[1];
   if (introMatch) return cleanRecipientValue(introMatch);
-  const legalMatch = text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
+  const legalMatch = primaryText.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
   if (legalMatch) return cleanRecipientValue(legalMatch);
   const aboutIndex = lines.findIndex((line) => /über uns|unternehmen|wer wir sind/i.test(line));
   if (aboutIndex >= 0 && lines[aboutIndex + 1] && !/stellen|job|bewerbung|kontakt/i.test(lines[aboutIndex + 1])) {
@@ -2343,14 +2344,18 @@ function cleanRecipientValue(value: string) {
 }
 
 function extractTitle(text: string, url: string) {
-  const normalized = text.replace(/\s+/g, ' ');
+  const primaryText = getPrimaryJobText(text);
+  const normalized = primaryText.replace(/\s+/g, ' ');
+  const xingTitle = primaryText.match(/^(.{4,100}?)\s+\|\s+XING Jobs/im)?.[1]
+    || primaryText.match(/Bewirb Dich als ['"“”]([^'"“”]{4,100})['"“”]/i)?.[1];
+  if (xingTitle) return cleanTitle(xingTitle);
   const titleBeforeTasks = normalized.match(/([A-ZÄÖÜ][\wÄÖÜäöüß /&.,'-]{3,90}\s+\(m\/w\/d\))\s*Das sind Ihre Aufgaben/i)?.[1];
   if (titleBeforeTasks) return cleanTitle(titleBeforeTasks);
   const headTitle = normalized.match(/\b(Head of [A-ZÄÖÜ][\wÄÖÜäöüß /&.,'-]{3,80})(?:\s+\(m\/w\/d\))?/i)?.[1];
   if (headTitle) return cleanTitle(headTitle);
   const leaderTitle = normalized.match(/\b((?:Leiter|Leitung|Bereichsleiter|Teamleiter|Manager|Quality Manager|Qualitätsmanager)[\wÄÖÜäöüß /&.,'-]{3,80})(?:\s+\(m\/w\/d\))?/i)?.[1];
   if (leaderTitle) return cleanTitle(leaderTitle);
-  const titleFromText = text.match(/(?:Position|Stelle)\s+([^\n.]{4,80})/i)?.[1]?.trim();
+  const titleFromText = primaryText.match(/(?:Position|Stelle)\s+([^\n.]{4,80})/i)?.[1]?.trim();
   if (titleFromText) return cleanTitle(titleFromText);
 
   if (url) {
@@ -2362,7 +2367,25 @@ function extractTitle(text: string, url: string) {
     }
   }
 
-  return cleanTitle(text.split('\n').find((line) => line.trim().length > 6)?.trim() ?? '');
+  return cleanTitle(primaryText.split('\n').find((line) => line.trim().length > 6)?.trim() ?? '');
+}
+
+function getPrimaryJobText(text: string) {
+  const markers = [
+    'Ähnliche Jobs',
+    'Gehalts-Prognose',
+    'Unternehmens-Details',
+    'Alle Stellenangebote',
+    'Ingenieur Jobs in der Nähe',
+  ];
+  let primary = text;
+  for (const marker of markers) {
+    const index = primary.indexOf(marker);
+    if (index > 120) {
+      primary = primary.slice(0, index);
+    }
+  }
+  return primary || text;
 }
 
 function cleanTitle(value: string) {
