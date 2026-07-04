@@ -2851,6 +2851,7 @@ textarea:focus {
 .apply-main .editor-section {
   grid-column: 1;
   grid-row: 3;
+  min-width: 0;
   padding-top: 0;
 }
 
@@ -2918,6 +2919,8 @@ textarea:focus {
 }
 
 .editor-layout {
+  min-width: 0;
+  max-width: 100%;
   padding: 18px;
 }
 
@@ -2931,20 +2934,28 @@ textarea:focus {
 }
 
 .editor-preview-grid {
-  grid-template-columns: minmax(520px, 1fr) minmax(520px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-width: 0;
+  max-width: 100%;
   --letter-pane-height: 560px;
 }
 
 .draft-editor {
+  min-width: 0;
+  max-width: 100%;
   height: var(--letter-pane-height);
   min-height: var(--letter-pane-height);
 }
 
 .letter-preview {
+  min-width: 0;
+  max-width: 100%;
   padding: 14px;
 }
 
 .preview-page {
+  min-width: 0;
+  max-width: 100%;
   height: calc(var(--letter-pane-height) - 28px);
   min-height: calc(var(--letter-pane-height) - 28px);
   max-height: calc(var(--letter-pane-height) - 28px);
