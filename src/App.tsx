@@ -575,7 +575,10 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'KI-Generierung fehlgeschlagen.');
       }
       const data = await response.json() as { text: string };
-      const nextDraft = cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile }));
+      const nextDraft = stabilizeGeneratedLetter(
+        cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile })),
+        resolvedJobDetails,
+      );
       setDraft(nextDraft);
       setCostEstimate(estimateAiCost(provider, `${resolvedJobInput}\n${profileEvidence.join('\n')}`, nextDraft));
       setActiveLetterId(null);
@@ -619,7 +622,7 @@ function ApplicationShell() {
       const data = await response.json() as { candidates: AiCandidate[] };
       const cleanedCandidates = (data.candidates ?? []).map((candidate) => ({
         ...candidate,
-        text: cleanGeneratedLetter(candidate.text),
+        text: stabilizeGeneratedLetter(cleanGeneratedLetter(candidate.text), resolvedJobDetails),
       })).map((candidate) => {
         if (!candidate.ok || !candidate.text) return candidate;
         const evaluation = evaluateCandidate(candidate.text, resolvedJobDetails, profileEvidence);
@@ -822,8 +825,12 @@ function ApplicationShell() {
   }
 
   async function copyForGoogleDocs() {
-    await navigator.clipboard.writeText(draft);
-    setLetterStatus('Text kopiert.');
+    try {
+      await copyTextToClipboard(draft);
+      setLetterStatus('Text kopiert.');
+    } catch {
+      setLetterStatus('Text konnte nicht automatisch kopiert werden. Bitte im Editor markieren und kopieren.');
+    }
   }
 
   async function openGoogleDocs() {
@@ -837,7 +844,7 @@ function ApplicationShell() {
     let documentWindow: Window | null = null;
     try {
       if (!googleClientId.trim()) {
-        await navigator.clipboard.writeText(textOverride);
+        await copyTextToClipboard(textOverride);
         setLetterStatus('Google OAuth Client-ID fehlt. Text wurde kopiert, aber ein gefülltes Google Doc braucht die gespeicherte Client-ID.');
         return;
       }
@@ -2076,6 +2083,27 @@ function uniqueValues(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+async function copyTextToClipboard(text: string) {
+  if (!text.trim()) return;
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', 'true');
+  textArea.style.position = 'fixed';
+  textArea.style.left = '-9999px';
+  textArea.style.top = '0';
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textArea);
+  if (!copied) throw new Error('Clipboard fallback failed');
+}
+
 function cleanGeneratedLetter(text: string) {
   const forbiddenLinePatterns = [
     /^relevant aus meiner datenbasis\s*:/i,
@@ -2100,6 +2128,68 @@ function cleanGeneratedLetter(text: string) {
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   return normalizeLetterParagraphs(cleaned);
+}
+
+function stabilizeGeneratedLetter(text: string, jobDetails: JobDetails) {
+  return stabilizeIntroParagraph(stabilizeSubjectLine(stabilizeRecipientBlock(text, jobDetails), jobDetails), jobDetails);
+}
+
+function stabilizeRecipientBlock(text: string, jobDetails: JobDetails) {
+  const lines = text.split('\n');
+  const separatorIndex = lines.findIndex((line) => line.includes('────'));
+  const dateIndex = lines.findIndex((line, index) => index > separatorIndex && /\b\d{1,2}\.\d{1,2}\.\d{4}\b/.test(line));
+  if (separatorIndex === -1 || dateIndex === -1 || dateIndex <= separatorIndex) return text;
+
+  const currentBlock = lines.slice(separatorIndex + 1, dateIndex).join('\n');
+  const hasUsefulRecipient = currentBlock
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .some((line) => !isSuspiciousRecipientLine(line) && !/xxx|empfänger bitte prüfen/i.test(line));
+
+  if (hasUsefulRecipient && !isSuspiciousRecipientLine(currentBlock)) return text;
+
+  const recipientBlock = [
+    jobDetails.company || 'XXX Unternehmen',
+    jobDetails.contact || 'XXX Ansprechpartner',
+    ...(jobDetails.address ? jobDetails.address.split('\n') : []),
+  ].map((line) => line.trim()).filter(Boolean);
+
+  return [
+    ...lines.slice(0, separatorIndex + 1),
+    '',
+    ...recipientBlock,
+    '',
+    '',
+    ...lines.slice(dateIndex),
+  ].join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+function stabilizeSubjectLine(text: string, jobDetails: JobDetails) {
+  if (!jobDetails.subject || jobDetails.subject === 'Bewerbung') return text;
+  const lines = text.split('\n');
+  const subjectIndex = lines.findIndex((line) => /^bewerbung\b/i.test(line.trim()));
+  if (subjectIndex === -1) return text;
+  const currentSubject = lines[subjectIndex].trim();
+  if (!isSuspiciousTitle(currentSubject) && currentSubject.length <= 110) return text;
+  lines[subjectIndex] = jobDetails.subject;
+  return lines.join('\n');
+}
+
+function stabilizeIntroParagraph(text: string, jobDetails: JobDetails) {
+  const lines = text.split('\n');
+  const salutationIndex = lines.findIndex((line) => /^(sehr geehrte|guten tag)/i.test(line.trim()));
+  if (salutationIndex === -1) return text;
+  const introIndex = lines.findIndex((line, index) => index > salutationIndex && line.trim().length > 0);
+  if (introIndex === -1) return text;
+  const intro = lines[introIndex].trim();
+  if (!isSuspiciousIntro(intro)) return text;
+
+  const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
+  const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
+  const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
+  lines[introIndex] = `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie operative Verantwortung mit klarer Prozess- und Qualitätsorientierung verbindet. Genau an dieser Schnittstelle arbeite ich besonders gern: Strukturen schaffen, Abläufe verständlich machen und Verbesserungen so umsetzen, dass sie im Tagesgeschäft tragen.`;
+  return lines.join('\n');
 }
 
 function normalizeLetterParagraphs(text: string) {
@@ -2204,6 +2294,13 @@ function extractCompany(text: string) {
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
   const labelMatch = text.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([^\n]{3,90})/i)?.[1];
   if (labelMatch) return cleanRecipientValue(labelMatch);
+  const normalized = text.replace(/\s+/g, ' ');
+  const teilkonzernMatch = normalized.match(/Teilkonzern:\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})(?:\s+Start:|\s+Bewerber|\s+Das sind|\s+Standort:)/i)?.[1];
+  if (teilkonzernMatch) return cleanRecipientValue(teilkonzernMatch);
+  const companyDetailsMatch = normalized.match(/Unternehmens-Details\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})(?:\s+Mess|\s+Maschinen|\s+Automotive|\s+Nürnberg|\s+Deutschland|\s+Ähnliche Jobs)/i)?.[1];
+  if (companyDetailsMatch) return cleanRecipientValue(companyDetailsMatch);
+  const introMatch = normalized.match(/\bBei\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})\s+(?:verbinden|entwickeln|arbeiten|stehen|setzen)\s+wir\b/i)?.[1];
+  if (introMatch) return cleanRecipientValue(introMatch);
   const legalMatch = text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
   if (legalMatch) return cleanRecipientValue(legalMatch);
   const aboutIndex = lines.findIndex((line) => /über uns|unternehmen|wer wir sind/i.test(line));
@@ -2226,11 +2323,23 @@ function extractAddress(text: string) {
 }
 
 function cleanRecipientValue(value: string) {
-  return value.replace(/\s+\|\s+.*$/, '').replace(/\s+-\s+.*$/, '').replace(/\s+/g, ' ').trim();
+  return value
+    .replace(/\s+\|\s+.*$/, '')
+    .replace(/\s+-\s+.*$/, '')
+    .replace(/\b(?:Website|Job merken|Suchauftrag erstellen|Zur Arbeitg(?:eber)?|Ähnliche Jobs)\b.*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function extractTitle(text: string, url: string) {
-  const titleFromText = text.match(/(?:Position|Stelle|Job|als)\s+([^\n.]{4,80})/i)?.[1]?.trim();
+  const normalized = text.replace(/\s+/g, ' ');
+  const titleBeforeTasks = normalized.match(/([A-ZÄÖÜ][\wÄÖÜäöüß /&.,'-]{3,90}\s+\(m\/w\/d\))\s*Das sind Ihre Aufgaben/i)?.[1];
+  if (titleBeforeTasks) return cleanTitle(titleBeforeTasks);
+  const headTitle = normalized.match(/\b(Head of [A-ZÄÖÜ][\wÄÖÜäöüß /&.,'-]{3,80})(?:\s+\(m\/w\/d\))?/i)?.[1];
+  if (headTitle) return cleanTitle(headTitle);
+  const leaderTitle = normalized.match(/\b((?:Leiter|Leitung|Bereichsleiter|Teamleiter|Manager|Quality Manager|Qualitätsmanager)[\wÄÖÜäöüß /&.,'-]{3,80})(?:\s+\(m\/w\/d\))?/i)?.[1];
+  if (leaderTitle) return cleanTitle(leaderTitle);
+  const titleFromText = text.match(/(?:Position|Stelle)\s+([^\n.]{4,80})/i)?.[1]?.trim();
   if (titleFromText) return cleanTitle(titleFromText);
 
   if (url) {
@@ -2250,7 +2359,9 @@ function cleanTitle(value: string) {
   let cleaned = value
     .replace(/\b\d{5,}\b/g, ' ')
     .replace(/\b(?:xing|linkedin|stepstone|indeed)\b/gi, ' ')
+    .replace(/\b(?:Website|Job merken|Suchauftrag erstellen|Zur Arbeitg(?:eber)?|Ähnliche Jobs|Neu · Gestern|Gestern veröffentlicht)\b/gi, ' ')
     .replace(/\s*\(.*?\)\s*/g, ' ')
+    .replace(/['"“”]+/g, ' ')
     .replace(/\bBuechenbach\b/gi, ' ')
     .replace(/Qualitaet/gi, 'Qualität')
     .replace(/\s+/g, ' ')
@@ -2260,6 +2371,23 @@ function cleanTitle(value: string) {
     cleaned = cleaned.slice(roleMatch.index).trim();
   }
   return cleaned ? `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`.slice(0, 90) : '';
+}
+
+function isSuspiciousRecipientLine(value: string) {
+  return /website|job merken|suchauftrag|zur arbeitg|ähnliche jobs|gehalts-prognose|geschätzte|stellenanzeige|xing|linkedin|stepstone/i.test(value)
+    || value.length > 140;
+}
+
+function isSuspiciousTitle(value: string) {
+  return /website|job merken|suchauftrag|zur arbeitg|ähnliche jobs|geschätzte|unternehmens-details| bei .* bei /i.test(value)
+    || value.length > 120
+    || /['"]\s+bei/i.test(value);
+}
+
+function isSuspiciousIntro(value: string) {
+  return /website|job merken|suchauftrag|zur arbeitg|ähnliche jobs|geschätzte|unternehmens-details| bei .* bei /i.test(value)
+    || value.length > 520
+    || /bei\s+(?:Website|Xing|LinkedIn|StepStone|Indeed)\w+/i.test(value);
 }
 
 function titleCase(value: string) {
