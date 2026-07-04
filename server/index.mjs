@@ -27,6 +27,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const execFileAsync = promisify(execFile);
 const packageJson = JSON.parse(await fs.readFile(path.join(rootDir, 'package.json'), 'utf8'));
 let updateInProgress = false;
+let updateTargetRevision = null;
 const updateLogs = [];
 
 await fs.mkdir(dataDir, { recursive: true });
@@ -105,6 +106,7 @@ app.get('/api/health', (_request, response) => {
 });
 
 app.get('/api/app-info', async (_request, response) => {
+  response.set('Cache-Control', 'no-store');
   response.json(await getAppInfo());
 });
 
@@ -166,7 +168,7 @@ app.get('/api/update-status', async (_request, response) => {
 
 app.post('/api/update', async (_request, response) => {
   if (updateInProgress) {
-    response.status(409).json({ error: 'Update läuft bereits.' });
+    response.status(409).json({ error: 'Update läuft bereits.', targetRevision: updateTargetRevision });
     return;
   }
 
@@ -177,6 +179,7 @@ app.post('/api/update', async (_request, response) => {
     const plan = await prepareSelfUpdate();
     if (!plan.updated) {
       updateInProgress = false;
+      updateTargetRevision = null;
       response.json({ ...plan, logs: updateLogs.slice(-12) });
       return;
     }
@@ -185,11 +188,13 @@ app.post('/api/update', async (_request, response) => {
     void finishSelfUpdate(plan).catch((error) => {
       const message = formatUpdateError(error);
       updateInProgress = false;
+      updateTargetRevision = null;
       addUpdateLog(`Fehler: ${message}`);
     });
   } catch (error) {
     const message = formatUpdateError(error);
     updateInProgress = false;
+    updateTargetRevision = null;
     addUpdateLog(`Fehler: ${message}`);
     response.status(400).json({ error: message });
   }
@@ -960,6 +965,7 @@ async function getUpdateStatus() {
       updateAvailable: behind > 0,
       behind,
       updating: updateInProgress,
+      targetRevision: updateTargetRevision,
       logs: updateLogs.slice(-12),
     };
   } catch (error) {
@@ -967,6 +973,7 @@ async function getUpdateStatus() {
       ok: false,
       updateAvailable: false,
       updating: updateInProgress,
+      targetRevision: updateTargetRevision,
       logs: updateLogs.slice(-12),
       error: error instanceof Error ? error.message : 'Update-Status konnte nicht geprüft werden.',
     };
@@ -997,16 +1004,21 @@ async function prepareSelfUpdate() {
   addUpdateLog('Remote-Stand wird geladen.');
   await gitOutput(['fetch', 'origin', 'main']);
   const before = await gitOutput(['rev-parse', '--short', 'HEAD']);
+  const remote = await gitOutput(['rev-parse', '--short', 'origin/main']);
+  const remoteCount = await gitOutput(['rev-list', '--count', 'origin/main']);
+  const targetRevision = `r${remoteCount}-${remote}`;
   const behind = Number(await gitOutput(['rev-list', '--count', 'HEAD..origin/main']) || 0);
 
   if (behind === 0) {
     updateInProgress = false;
+    updateTargetRevision = null;
     addUpdateLog('Keine neue Version verfügbar.');
-    return { ok: true, updated: false, message: 'Keine neue Version verfügbar.', current: before };
+    return { ok: true, updated: false, message: 'Keine neue Version verfügbar.', current: before, targetRevision };
   }
 
+  updateTargetRevision = targetRevision;
   addUpdateLog(`${behind} Änderung(en) gefunden. Update-Script startet.`);
-  return { ok: true, updated: true, message: 'Update wird installiert. Die App startet danach automatisch neu.', before, behind };
+  return { ok: true, updated: true, message: 'Update wird installiert. Die App startet danach automatisch neu.', before, behind, targetRevision };
 }
 
 async function finishSelfUpdate(plan) {

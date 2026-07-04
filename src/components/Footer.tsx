@@ -13,39 +13,71 @@ export function Footer() {
   const [version, setVersion] = useState(__APP_VERSION__);
   const reconnectStarted = useRef(false);
 
-  const waitForRestart = useCallback(() => {
+  const waitForRestart = useCallback((targetRevision?: string | null) => {
     if (reconnectStarted.current) return;
     reconnectStarted.current = true;
+    let serviceWasUnavailable = false;
+    const startedAt = Date.now();
 
     window.setTimeout(() => {
       const poll = async () => {
         try {
-          const response = await fetch('/api/health', { cache: 'no-store' });
+          const response = await fetch('/api/app-info', { cache: 'no-store' });
           if (response.ok) {
-            setMaintenanceMessage('Dienst ist wieder erreichbar. Seite wird neu geladen ...');
-            window.setTimeout(() => window.location.reload(), 700);
-            return;
+            const data = await response.json() as { revision?: string | null; version?: string | null };
+            if (data.revision) setRevision(data.revision);
+            if (data.version) setVersion(data.version);
+
+            if (targetRevision && data.revision === targetRevision) {
+              setMaintenanceMessage(`Update ist aktiv (${targetRevision}). Seite wird neu geladen ...`);
+              window.setTimeout(() => window.location.reload(), 700);
+              return;
+            }
+
+            if (!targetRevision && serviceWasUnavailable) {
+              setMaintenanceMessage('Dienst ist wieder erreichbar. Seite wird neu geladen ...');
+              window.setTimeout(() => window.location.reload(), 700);
+              return;
+            }
+
+            setMaintenanceMessage(targetRevision
+              ? `Update läuft noch. Warte auf Rev. ${targetRevision} ...`
+              : 'Update läuft noch. Ich warte auf den Neustart ...');
           }
         } catch {
-          setMaintenanceMessage('Update läuft noch. Ich verbinde automatisch neu ...');
+          serviceWasUnavailable = true;
+          setMaintenanceMessage('Dienst startet gerade neu. Ich verbinde automatisch wieder ...');
         }
+
+        if (Date.now() - startedAt > 240000) {
+          setMaintenanceMessage('Update dauert ungewöhnlich lange. Bitte Server-Logs prüfen, falls gleich nichts passiert.');
+        }
+
         window.setTimeout(poll, 1600);
       };
 
       poll();
-    }, 2800);
+    }, 1600);
   }, []);
 
   const checkUpdate = useCallback(async (showStatus = true) => {
     if (showStatus) setStatus('Prüfe Update ...');
     try {
       const response = await fetch('/api/update-status');
-      const data = await response.json() as { updateAvailable?: boolean; behind?: number; updating?: boolean; error?: string };
+      const data = await response.json() as {
+        updateAvailable?: boolean;
+        behind?: number;
+        updating?: boolean;
+        targetRevision?: string | null;
+        error?: string;
+      };
       if (data.updating) {
         setStatus('Update läuft ...');
         setMaintenanceVisible(true);
-        setMaintenanceMessage('Update läuft bereits. Ich warte, bis der Dienst wieder erreichbar ist ...');
-        waitForRestart();
+        setMaintenanceMessage(data.targetRevision
+          ? `Update läuft bereits. Ich warte auf Rev. ${data.targetRevision} ...`
+          : 'Update läuft bereits. Ich warte, bis der Dienst neu gestartet ist ...');
+        waitForRestart(data.targetRevision);
         return;
       }
       setUpdateAvailable(Boolean(data.updateAvailable));
@@ -78,12 +110,19 @@ export function Footer() {
     setMaintenanceMessage('Update wird vorbereitet. Bitte diese Seite offen lassen ...');
     try {
       const response = await fetch('/api/update', { method: 'POST' });
-      const data = await response.json() as { message?: string; error?: string; updated?: boolean };
+      const data = await response.json() as {
+        message?: string;
+        error?: string;
+        updated?: boolean;
+        targetRevision?: string | null;
+      };
       if (!response.ok) throw new Error(data.error || 'Update fehlgeschlagen.');
       setStatus(data.message || 'Update abgeschlossen.');
       if (data.updated) {
-        setMaintenanceMessage('Update wird installiert. Der Dienst startet gleich neu ...');
-        waitForRestart();
+        setMaintenanceMessage(data.targetRevision
+          ? `Update wird installiert. Ziel ist Rev. ${data.targetRevision} ...`
+          : 'Update wird installiert. Der Dienst startet gleich neu ...');
+        waitForRestart(data.targetRevision);
       } else {
         setMaintenanceVisible(false);
         reconnectStarted.current = false;
