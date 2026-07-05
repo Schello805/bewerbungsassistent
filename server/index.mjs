@@ -553,7 +553,7 @@ app.post('/api/generate-letter', async (request, response, next) => {
       response.json({ text, jobDetails });
     } catch (providerError) {
       response.json({
-        text: createServerDraft({ personalData: request.body.personalData, jobDetails }),
+        text: createServerDraft({ personalData: request.body.personalData, jobDetails, jobInput: request.body.jobInput }),
         jobDetails,
         warning: providerError instanceof Error
           ? `KI-Anbieter nicht verfügbar: ${providerError.message}`
@@ -1293,7 +1293,10 @@ function cleanServerTitle(value) {
   const roleWords = /\b(qualitätsingenieur|leitung|leiter(?!platten)|head|manager|quality|qualität|sicherung|auditor|projekt|controller|prozess|operations|operative|ingenieur|specialist|lead)\b/i;
   const roleMatch = cleaned.match(roleWords);
   if (roleMatch && roleMatch.index && roleMatch.index > 0 && roleMatch.index < 35) {
-    cleaned = cleaned.slice(roleMatch.index).trim();
+    const prefix = cleaned.slice(0, roleMatch.index).trim();
+    if (!/^senior$/i.test(prefix)) {
+      cleaned = cleaned.slice(roleMatch.index).trim();
+    }
   }
   return cleaned ? `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`.slice(0, 90) : '';
 }
@@ -1325,7 +1328,7 @@ function stabilizeGeneratedLetter(text, jobDetails) {
   return lines.join('\n');
 }
 
-function createServerDraft({ personalData = {}, jobDetails }) {
+function createServerDraft({ personalData = {}, jobDetails, jobInput = '' }) {
   const date = new Intl.DateTimeFormat('de-DE').format(new Date());
   const contactLine = [
     personalData.email,
@@ -1336,6 +1339,29 @@ function createServerDraft({ personalData = {}, jobDetails }) {
   const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
   const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
+  const jobText = normalizeText(jobInput).toLowerCase();
+  const detectedMethods = [
+    ['VDA 6.3', ['vda 6.3']],
+    ['ISO 9001', ['iso 9001']],
+    ['FMEA', ['fmea']],
+    ['8D', ['8d']],
+    ['Audits', ['audit']],
+    ['Reklamationsbearbeitung', ['reklamation', 'customer complaint', 'beschwerde']],
+    ['Qualitätsplanung', ['qualitätsplanung', 'quality planning', 'apqp']],
+    ['Lieferantenqualität', ['lieferantenqualität', 'supplier quality']],
+    ['Produktionsqualität', ['produktionsqualität', 'production quality']],
+  ]
+    .filter(([, terms]) => terms.some((term) => jobText.includes(term)))
+    .map(([label]) => label);
+  const methodReference = detectedMethods.length
+    ? `An der Stelle erkenne ich besonders Themen wie ${joinNaturalServer(detectedMethods.slice(0, 5))}. Diese Anforderungen passen zu meinem Profil, weil ich Qualität nicht nur als Dokumentation verstehe, sondern als verbindliche Arbeit an Standards, Ursachenanalyse und sauberer Umsetzung.`
+    : 'An der Stelle erkenne ich vor allem den Bedarf, Qualitätsanforderungen strukturiert aufzunehmen, sauber zu bewerten und mit den beteiligten Bereichen in praktikable Abläufe zu übersetzen.';
+  const qualityEvidence = [
+    'Qualitätsmanagement',
+    'Qualitätsmanagementbeauftragter',
+    'VDA 6.3',
+    'ISO 9001',
+  ];
   return [
     personalData.name || 'XXX Name',
     personalData.qualification || '',
@@ -1351,9 +1377,13 @@ function createServerDraft({ personalData = {}, jobDetails }) {
     '',
     jobDetails.salutation || 'Sehr geehrte Damen und Herren,',
     '',
-    `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie fachliche Verantwortung im Qualitätsbereich mit strukturierter Verbesserungsarbeit verbindet.`,
+    `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie fachliche Verantwortung im Qualitätsbereich mit strukturierter Verbesserungsarbeit verbindet. Genau diese Verbindung aus klaren Anforderungen, verlässlicher Kommunikation und pragmatischer Umsetzung entspricht meiner Arbeitsweise.`,
     '',
-    'Als staatl. gepr. Betriebswirt mit Erfahrung im Qualitätsmanagement, als Qualitätsmanagementbeauftragter sowie mit Bezug zu VDA 6.3 und ISO 9001 bringe ich einen praxisnahen Blick auf Standards, Dokumentation und kontinuierliche Verbesserung mit.',
+    `Als ${personalData.qualification || 'staatl. gepr. Betriebswirt'} verbinde ich betriebswirtschaftliches Denken mit einem praktischen Blick auf Prozesse, Schnittstellen und Qualität im Tagesgeschäft. Meine Erfahrung mit ${joinNaturalServer(qualityEvidence)} hilft mir, Anforderungen nachvollziehbar zu strukturieren, Dokumentation belastbar aufzubauen und Verbesserungen so zu gestalten, dass sie im Alltag funktionieren.`,
+    '',
+    methodReference,
+    '',
+    'In meinen bisherigen Aufgaben war mir wichtig, Prozesse nicht nur zu beschreiben, sondern wirksam weiterzuentwickeln. Dazu gehören klare Standards, nachvollziehbare Entscheidungen, ein gutes Verständnis für Schnittstellen und die Fähigkeit, Fachbereiche so einzubinden, dass Qualität dauerhaft stabil bleibt.',
     '',
     'Gerne erläutere ich Ihnen in einem persönlichen Gespräch, wie ich Ihr Team konkret unterstützen kann.',
     '',
@@ -1361,6 +1391,13 @@ function createServerDraft({ personalData = {}, jobDetails }) {
     '',
     personalData.closingName || personalData.name || 'XXX',
   ].filter((line) => line !== undefined).join('\n');
+}
+
+function joinNaturalServer(items) {
+  const values = [...new Set(items.filter(Boolean))];
+  if (values.length <= 1) return values[0] || '';
+  if (values.length === 2) return `${values[0]} und ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')} und ${values.at(-1)}`;
 }
 
 function extractUrlFromText(text) {
