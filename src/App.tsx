@@ -2210,7 +2210,7 @@ function stabilizeIntroParagraph(text: string, jobDetails: JobDetails) {
   const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
   const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
   const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
-  lines[introIndex] = `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie operative Verantwortung mit klarer Prozess- und Qualitätsorientierung verbindet. Genau an dieser Schnittstelle arbeite ich besonders gern: Strukturen schaffen, Abläufe verständlich machen und Verbesserungen so umsetzen, dass sie im Tagesgeschäft tragen.`;
+  lines[introIndex] = `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie Qualitätssicherung, Prozessverständnis und pragmatische Verbesserungsarbeit sinnvoll verbindet. Genau in diesem Umfeld arbeite ich gern: Anforderungen sauber aufnehmen, Standards verständlich machen und Verbesserungen so umsetzen, dass sie im Alltag tragen.`;
   return lines.join('\n');
 }
 
@@ -2413,6 +2413,10 @@ function cleanTitle(value: string) {
     .replace(/Qualitaet/gi, 'Qualität')
     .replace(/\s+/g, ' ')
     .trim();
+  const parts = cleaned.split(/\s+[-–]\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length > 1 && roleWords.test(parts[0])) {
+    cleaned = parts[0];
+  }
   const roleMatch = cleaned.match(roleWords);
   if (roleMatch && roleMatch.index && roleMatch.index > 0 && roleMatch.index < 35) {
     const prefix = cleaned.slice(0, roleMatch.index).trim();
