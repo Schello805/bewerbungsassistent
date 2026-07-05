@@ -1181,7 +1181,7 @@ Regeln:
 - Wenn Firma, Ansprechpartner oder Adresse unbekannt sind, nutze neutrale Platzhalter mit XXX statt Jobbörsen-Namen wie Xing, LinkedIn oder StepStone.
 - Jobbörsen wie Xing, LinkedIn, StepStone oder Indeed dürfen als Quelle genannt werden, aber niemals als Arbeitgeber oder Empfänger.
 - ${sourceInstruction}
-- Der Betreff darf kein Markdown enthalten.
+- Der Betreff darf kein Markdown enthalten und muss kurz sein: "Bewerbung als [Rolle]". Kein Ort, keine Job-ID, kein Firmenname im Betreff.
 - Das Anschreiben soll substanziell sein: etwa 230 bis 360 Wörter im Haupttext, nicht nur drei generische Sätze.
 - Schreibe keine Floskelliste. Jeder Absatz muss einen Zweck haben und zur Stelle passen.
 - Nutze "ich" natürlich, aber nicht in jedem Satz am Anfang.
@@ -1196,7 +1196,7 @@ Mit freundlichen Grüßen
 
 ${personalData?.closingName || personalData?.name || 'XXX'}
 - Gib nur den fertigen Anschreiben-Text zurück, keine Erklärung.
-- Schreibe niemals Meta-Sätze wie "Der gewünschte Stil ist", "Relevant aus meiner Datenbasis", "Bitte diesen Entwurf prüfen", "Ausgelesene Unterlagen", "Strukturierte Profilanalyse" oder Hinweise über diesen Prompt.
+- Schreibe niemals Meta-Sätze wie "Der gewünschte Stil ist", "Relevant aus meiner Datenbasis", "Bitte diesen Entwurf prüfen", "Ausgelesene Unterlagen", "Strukturierte Profilanalyse", "An der Stelle erkenne ich" oder Hinweise über diesen Prompt.
 
 Aufbau des Haupttexts:
 1. Einstieg: Quelle nennen, konkrete Stelle nennen, einen nachvollziehbaren Grund nennen, warum die Aufgabe fachlich passt.
@@ -1301,6 +1301,10 @@ function cleanServerTitle(value) {
     .replace(/Qualitaet/gi, 'Qualität')
     .trim();
   const roleWords = /\b(qualitätsingenieur|leitung|leiter(?!platten)|head|manager|quality|qualität|sicherung|auditor|projekt|controller|prozess|operations|operative|ingenieur|specialist|lead)\b/i;
+  const parts = cleaned.split(/\s+[-–]\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length > 1 && roleWords.test(parts[0])) {
+    cleaned = parts[0];
+  }
   const roleMatch = cleaned.match(roleWords);
   if (roleMatch && roleMatch.index && roleMatch.index > 0 && roleMatch.index < 35) {
     const prefix = cleaned.slice(0, roleMatch.index).trim();
@@ -1332,7 +1336,7 @@ function stabilizeGeneratedLetter(text, jobDetails) {
       const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
       const titleReference = ` für die Position ${jobDetails.title}`;
       const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
-      lines[introIndex] = `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie fachliche Verantwortung im Qualitätsbereich mit strukturierter Verbesserungsarbeit verbindet. Genau an dieser Schnittstelle arbeite ich besonders gern: Anforderungen verstehen, Abläufe sauber strukturieren und Verbesserungen so umsetzen, dass sie im Tagesgeschäft tragen.`;
+      lines[introIndex] = `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie Qualitätssicherung, Prozessverständnis und pragmatische Verbesserungsarbeit sinnvoll verbindet. Genau in diesem Umfeld arbeite ich gern: Anforderungen sauber aufnehmen, Standards verständlich machen und Verbesserungen so umsetzen, dass sie im Alltag tragen.`;
     }
   }
   return lines.join('\n');
@@ -1343,7 +1347,8 @@ function ensureSubstantialLetter({ text, personalData, jobDetails, jobInput }) {
   const wordCount = mainText.split(/\s+/).filter(Boolean).length;
   const paragraphCount = mainText.split(/\n\s*\n/).filter((paragraph) => paragraph.trim().length > 40).length;
   const hasSpecificSubject = jobDetails?.title && text.toLowerCase().includes(jobDetails.title.toLowerCase());
-  if (wordCount >= 180 && paragraphCount >= 4 && hasSpecificSubject) {
+  const hasMechanicalPhrases = /an der stelle erkenne ich|diese anforderungen passen zu meinem profil|meine erfahrung mit [^.]+ hilft mir/i.test(text);
+  if (wordCount >= 180 && paragraphCount >= 4 && hasSpecificSubject && !hasMechanicalPhrases) {
     return text;
   }
   return createServerDraft({ personalData, jobDetails, jobInput });
@@ -1383,8 +1388,8 @@ function createServerDraft({ personalData = {}, jobDetails, jobInput = '' }) {
     .filter(([, terms]) => terms.some((term) => jobText.includes(term)))
     .map(([label]) => label);
   const methodReference = detectedMethods.length
-    ? `An der Stelle erkenne ich besonders Themen wie ${joinNaturalServer(detectedMethods.slice(0, 5))}. Diese Anforderungen passen zu meinem Profil, weil ich Qualität nicht nur als Dokumentation verstehe, sondern als verbindliche Arbeit an Standards, Ursachenanalyse und sauberer Umsetzung.`
-    : 'An der Stelle erkenne ich vor allem den Bedarf, Qualitätsanforderungen strukturiert aufzunehmen, sauber zu bewerten und mit den beteiligten Bereichen in praktikable Abläufe zu übersetzen.';
+    ? `Die genannten Schwerpunkte rund um ${joinNaturalServer(detectedMethods.slice(0, 5))} greifen Themen auf, die ich aus der praktischen Qualitätsarbeit kenne. Dabei ist mir wichtig, Qualität nicht nur formal zu dokumentieren, sondern Abweichungen nachvollziehbar zu bewerten, Ursachen sauber nachzuhalten und Standards gemeinsam mit den beteiligten Bereichen tragfähig umzusetzen.`
+    : 'Die Aufgabe verlangt aus meiner Sicht vor allem, Qualitätsanforderungen strukturiert aufzunehmen, sauber zu bewerten und mit den beteiligten Bereichen in praktikable Abläufe zu übersetzen.';
   const qualityEvidence = [
     'Qualitätsmanagement',
     'Qualitätsmanagementbeauftragter',
@@ -1406,9 +1411,9 @@ function createServerDraft({ personalData = {}, jobDetails, jobInput = '' }) {
     '',
     jobDetails.salutation || 'Sehr geehrte Damen und Herren,',
     '',
-    `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie fachliche Verantwortung im Qualitätsbereich mit strukturierter Verbesserungsarbeit verbindet. Genau diese Verbindung aus klaren Anforderungen, verlässlicher Kommunikation und pragmatischer Umsetzung entspricht meiner Arbeitsweise.`,
+    `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie Qualitätssicherung, Prozessverständnis und pragmatische Verbesserungsarbeit sinnvoll verbindet. Genau diese Verbindung aus klaren Anforderungen, verlässlicher Kommunikation und umsetzbaren Standards entspricht meiner Arbeitsweise.`,
     '',
-    `Als ${personalData.qualification || 'staatl. gepr. Betriebswirt'} verbinde ich betriebswirtschaftliches Denken mit einem praktischen Blick auf Prozesse, Schnittstellen und Qualität im Tagesgeschäft. Meine Erfahrung mit ${joinNaturalServer(qualityEvidence)} hilft mir, Anforderungen nachvollziehbar zu strukturieren, Dokumentation belastbar aufzubauen und Verbesserungen so zu gestalten, dass sie im Alltag funktionieren.`,
+    `Als ${personalData.qualification || 'staatl. gepr. Betriebswirt'} verbinde ich betriebswirtschaftliches Denken mit einem praktischen Blick auf Prozesse, Schnittstellen und Qualität im Tagesgeschäft. Durch Qualitätsmanagement, meine Rolle als Qualitätsmanagementbeauftragter sowie den Bezug zu ${joinNaturalServer(qualityEvidence.slice(2))} kann ich Anforderungen nachvollziehbar strukturieren, Dokumentation belastbar aufbauen und Verbesserungen so gestalten, dass sie im Alltag funktionieren.`,
     '',
     methodReference,
     '',
