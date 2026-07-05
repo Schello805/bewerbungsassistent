@@ -533,10 +533,11 @@ app.post('/api/generate-letter', async (request, response, next) => {
     const provider = typeof request.body.provider === 'string' ? request.body.provider : 'OpenAI';
     const requestApiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
     const apiKey = requestApiKey || getProviderApiKey(provider);
+    const jobDetails = deriveJobDetails(request.body.jobInput, request.body.jobDetails);
     const prompt = buildAiPrompt({
       personalData: request.body.personalData,
       jobInput: request.body.jobInput,
-      jobDetails: request.body.jobDetails,
+      jobDetails,
       voice: request.body.voice,
       promptNotes: request.body.promptNotes,
       profile: await readProfileFromDataDir(),
@@ -548,11 +549,12 @@ app.post('/api/generate-letter', async (request, response, next) => {
     }
 
     try {
-      const text = cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt }));
-      response.json({ text });
+      const text = stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt })), jobDetails);
+      response.json({ text, jobDetails });
     } catch (providerError) {
       response.json({
-        text: '',
+        text: createServerDraft({ personalData: request.body.personalData, jobDetails }),
+        jobDetails,
         warning: providerError instanceof Error
           ? `KI-Anbieter nicht verfügbar: ${providerError.message}`
           : 'KI-Anbieter nicht verfügbar. Lokale Vorlage erstellt.',
@@ -600,10 +602,11 @@ app.post(['/api/compare-letter', '/compare-letter'], async (request, response, n
     const apiKeys = getApiKeyMap();
     const providers = getComparableProviders(apiKeys, request.body.provider, requestApiKey);
     const profile = await readProfileFromDataDir();
+    const jobDetails = deriveJobDetails(request.body.jobInput, request.body.jobDetails);
     const prompt = buildAiPrompt({
       personalData: request.body.personalData,
       jobInput: request.body.jobInput,
-      jobDetails: request.body.jobDetails,
+      jobDetails,
       voice: request.body.voice,
       promptNotes: request.body.promptNotes,
       profile,
@@ -620,7 +623,7 @@ app.post(['/api/compare-letter', '/compare-letter'], async (request, response, n
         const apiKey = candidateProvider === request.body.provider && requestApiKey
           ? requestApiKey
           : getProviderApiKey(candidateProvider);
-        const text = cleanGeneratedLetter(await generateWithProvider({ provider: candidateProvider, apiKey, prompt }));
+        const text = stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider: candidateProvider, apiKey, prompt })), jobDetails);
         candidates.push({ provider: candidateProvider, text, ok: true });
       } catch (error) {
         candidates.push({ provider: candidateProvider, text: '', ok: false, error: error instanceof Error ? error.message : 'Fehler' });
@@ -1208,6 +1211,164 @@ ${jobInput || ''}
 Profilinformationen zur inhaltlichen Nutzung, nicht wörtlich kopieren:
 ${profileContext}
 `.trim();
+}
+
+function deriveJobDetails(jobInput, clientJobDetails = {}) {
+  const text = String(jobInput || '');
+  const url = extractUrlFromText(text);
+  const source = clientJobDetails?.source || detectJobSource(`${url} ${text}`);
+  const title = extractServerJobTitle(text, url) || cleanServerTitle(clientJobDetails?.title || '');
+  const company = extractServerCompany(text) || cleanServerCompany(clientJobDetails?.company || '');
+  const contact = cleanServerCompany(clientJobDetails?.contact || '');
+  const address = typeof clientJobDetails?.address === 'string' ? clientJobDetails.address : '';
+  const recipient = [company, contact].filter(Boolean).join('\n') || clientJobDetails?.recipient || 'XXX Unternehmen\nXXX Ansprechpartner';
+
+  return {
+    ...clientJobDetails,
+    recipient,
+    contact,
+    address,
+    subject: title ? `Bewerbung als ${title}` : clientJobDetails?.subject || 'Bewerbung',
+    salutation: clientJobDetails?.salutation || 'Sehr geehrte Damen und Herren,',
+    company,
+    title,
+    source,
+  };
+}
+
+function extractServerJobTitle(text, url = '') {
+  const primaryText = getPrimaryJobText(text);
+  const normalized = normalizeText(primaryText);
+  const xingTitle = primaryText.match(/^(.{4,100}?)\s+\|\s+XING Jobs/im)?.[1]
+    || primaryText.match(/Bewirb Dich als ['"“”]([^'"“”]{4,100})['"“”]/i)?.[1];
+  if (xingTitle) return cleanServerTitle(xingTitle);
+
+  const explicitTitle = normalized.match(/\b((?:Senior\s+)?Qualitätsingenieur(?:in)?(?:\s+\(m\/w\/d\))?)/i)?.[1]
+    || normalized.match(/\b(Head of [A-ZÄÖÜ][\wÄÖÜäöüß /&.,'-]{3,80})(?:\s+\(m\/w\/d\))?/i)?.[1]
+    || normalized.match(/\b((?:Leiter(?!platten)|Leitung|Bereichsleiter|Teamleiter|Manager|Quality Manager|Qualitätsmanager)\b[\wÄÖÜäöüß /&.,'-]{3,80})(?:\s+\(m\/w\/d\))?/i)?.[1];
+  if (explicitTitle) return cleanServerTitle(explicitTitle);
+
+  if (url) {
+    try {
+      const slug = new URL(url).pathname.split('/').filter(Boolean).pop() || '';
+      const withoutId = slug.replace(/-\d{5,}.*$/, '');
+      const titlePart = withoutId.replace(/^[a-zäöüß]+-/, '');
+      return cleanServerTitle(titleCaseServer(titlePart.replace(/[-_]/g, ' ')));
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
+function extractServerCompany(text) {
+  const primaryText = getPrimaryJobText(text);
+  const normalized = normalizeText(primaryText);
+  const xingCompany = normalized.match(/bei\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80})\s+in\s+[A-ZÄÖÜ]/)?.[1];
+  if (xingCompany) return cleanServerCompany(xingCompany);
+  const legalMatch = normalized.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
+  return legalMatch ? cleanServerCompany(legalMatch) : '';
+}
+
+function getPrimaryJobText(text) {
+  const markers = ['Ähnliche Jobs', 'Gehalts-Prognose', 'Unternehmens-Details', 'Alle Stellenangebote', 'Ingenieur Jobs in der Nähe'];
+  let primary = String(text || '');
+  for (const marker of markers) {
+    const index = primary.indexOf(marker);
+    if (index > 120) primary = primary.slice(0, index);
+  }
+  return primary || String(text || '');
+}
+
+function cleanServerTitle(value) {
+  let cleaned = normalizeText(String(value || ''))
+    .replace(/\b\d{5,}\b/g, ' ')
+    .replace(/\b(?:xing|linkedin|stepstone|indeed)\b/gi, ' ')
+    .replace(/\b(?:Website|Job merken|Suchauftrag erstellen|Zur Arbeitg(?:eber)?|Ähnliche Jobs|Neu · Gestern|Gestern veröffentlicht)\b/gi, ' ')
+    .replace(/\s*\(.*?\)\s*/g, ' ')
+    .replace(/['"“”]+/g, ' ')
+    .replace(/qualitaets/gi, 'Qualitäts')
+    .replace(/Qualitaet/gi, 'Qualität')
+    .trim();
+  const roleWords = /\b(qualitätsingenieur|leitung|leiter(?!platten)|head|manager|quality|qualität|sicherung|auditor|projekt|controller|prozess|operations|operative|ingenieur|specialist|lead)\b/i;
+  const roleMatch = cleaned.match(roleWords);
+  if (roleMatch && roleMatch.index && roleMatch.index > 0 && roleMatch.index < 35) {
+    cleaned = cleaned.slice(roleMatch.index).trim();
+  }
+  return cleaned ? `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`.slice(0, 90) : '';
+}
+
+function cleanServerCompany(value) {
+  return normalizeText(String(value || ''))
+    .replace(/\b(?:Website|Job merken|Suchauftrag erstellen|Zur Arbeitg(?:eber)?|Ähnliche Jobs)\b.*$/i, '')
+    .trim();
+}
+
+function stabilizeGeneratedLetter(text, jobDetails) {
+  if (!text || !jobDetails?.subject || jobDetails.subject === 'Bewerbung') return text;
+  const lines = text.split('\n');
+  const subjectIndex = lines.findIndex((line) => /^bewerbung\b/i.test(line.trim()));
+  if (subjectIndex !== -1) {
+    lines[subjectIndex] = jobDetails.subject;
+  }
+  const salutationIndex = lines.findIndex((line) => /^(sehr geehrte|guten tag)/i.test(line.trim()));
+  const introIndex = lines.findIndex((line, index) => index > salutationIndex && line.trim());
+  if (introIndex !== -1 && jobDetails.title) {
+    const intro = lines[introIndex].toLowerCase();
+    if (!intro.includes(jobDetails.title.toLowerCase()) || (jobDetails.company && !intro.includes(jobDetails.company.toLowerCase()))) {
+      const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
+      const titleReference = ` für die Position ${jobDetails.title}`;
+      const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
+      lines[introIndex] = `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie fachliche Verantwortung im Qualitätsbereich mit strukturierter Verbesserungsarbeit verbindet. Genau an dieser Schnittstelle arbeite ich besonders gern: Anforderungen verstehen, Abläufe sauber strukturieren und Verbesserungen so umsetzen, dass sie im Tagesgeschäft tragen.`;
+    }
+  }
+  return lines.join('\n');
+}
+
+function createServerDraft({ personalData = {}, jobDetails }) {
+  const date = new Intl.DateTimeFormat('de-DE').format(new Date());
+  const contactLine = [
+    personalData.email,
+    personalData.phone,
+    [personalData.street, personalData.city].filter(Boolean).join(', '),
+    personalData.website,
+  ].filter(Boolean).join(' · ');
+  const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
+  const titleReference = jobDetails.title ? ` für die Position ${jobDetails.title}` : '';
+  const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
+  return [
+    personalData.name || 'XXX Name',
+    personalData.qualification || '',
+    contactLine,
+    '────────────────────────────────────────',
+    '',
+    jobDetails.recipient || jobDetails.company || 'XXX Unternehmen',
+    jobDetails.address || '',
+    '',
+    `${personalData.location || 'XXX Ort'}, ${date}`,
+    '',
+    jobDetails.subject || 'Bewerbung',
+    '',
+    jobDetails.salutation || 'Sehr geehrte Damen und Herren,',
+    '',
+    `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie fachliche Verantwortung im Qualitätsbereich mit strukturierter Verbesserungsarbeit verbindet.`,
+    '',
+    'Als staatl. gepr. Betriebswirt mit Erfahrung im Qualitätsmanagement, als Qualitätsmanagementbeauftragter sowie mit Bezug zu VDA 6.3 und ISO 9001 bringe ich einen praxisnahen Blick auf Standards, Dokumentation und kontinuierliche Verbesserung mit.',
+    '',
+    'Gerne erläutere ich Ihnen in einem persönlichen Gespräch, wie ich Ihr Team konkret unterstützen kann.',
+    '',
+    'Mit freundlichen Grüßen',
+    '',
+    personalData.closingName || personalData.name || 'XXX',
+  ].filter((line) => line !== undefined).join('\n');
+}
+
+function extractUrlFromText(text) {
+  return String(text || '').match(/https?:\/\/\S+/i)?.[0] || '';
+}
+
+function titleCaseServer(value) {
+  return String(value || '').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function getTemplateInstruction(voice) {
