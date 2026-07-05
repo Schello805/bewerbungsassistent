@@ -2415,7 +2415,10 @@ function cleanTitle(value: string) {
     .trim();
   const roleMatch = cleaned.match(roleWords);
   if (roleMatch && roleMatch.index && roleMatch.index > 0 && roleMatch.index < 35) {
-    cleaned = cleaned.slice(roleMatch.index).trim();
+    const prefix = cleaned.slice(0, roleMatch.index).trim();
+    if (!/^senior$/i.test(prefix)) {
+      cleaned = cleaned.slice(roleMatch.index).trim();
+    }
   }
   return cleaned ? `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}`.slice(0, 90) : '';
 }
