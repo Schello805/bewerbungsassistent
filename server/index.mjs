@@ -549,7 +549,12 @@ app.post('/api/generate-letter', async (request, response, next) => {
     }
 
     try {
-      const text = stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt })), jobDetails);
+      const text = ensureSubstantialLetter({
+        text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt })), jobDetails),
+        personalData: request.body.personalData,
+        jobDetails,
+        jobInput: request.body.jobInput,
+      });
       response.json({ text, jobDetails });
     } catch (providerError) {
       response.json({
@@ -623,7 +628,12 @@ app.post(['/api/compare-letter', '/compare-letter'], async (request, response, n
         const apiKey = candidateProvider === request.body.provider && requestApiKey
           ? requestApiKey
           : getProviderApiKey(candidateProvider);
-        const text = stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider: candidateProvider, apiKey, prompt })), jobDetails);
+        const text = ensureSubstantialLetter({
+          text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider: candidateProvider, apiKey, prompt })), jobDetails),
+          personalData: request.body.personalData,
+          jobDetails,
+          jobInput: request.body.jobInput,
+        });
         candidates.push({ provider: candidateProvider, text, ok: true });
       } catch (error) {
         candidates.push({ provider: candidateProvider, text: '', ok: false, error: error instanceof Error ? error.message : 'Fehler' });
@@ -1326,6 +1336,25 @@ function stabilizeGeneratedLetter(text, jobDetails) {
     }
   }
   return lines.join('\n');
+}
+
+function ensureSubstantialLetter({ text, personalData, jobDetails, jobInput }) {
+  const mainText = extractMainLetterBody(text);
+  const wordCount = mainText.split(/\s+/).filter(Boolean).length;
+  const paragraphCount = mainText.split(/\n\s*\n/).filter((paragraph) => paragraph.trim().length > 40).length;
+  const hasSpecificSubject = jobDetails?.title && text.toLowerCase().includes(jobDetails.title.toLowerCase());
+  if (wordCount >= 180 && paragraphCount >= 4 && hasSpecificSubject) {
+    return text;
+  }
+  return createServerDraft({ personalData, jobDetails, jobInput });
+}
+
+function extractMainLetterBody(text) {
+  const lines = String(text || '').split('\n');
+  const salutationIndex = lines.findIndex((line) => /^(sehr geehrte|guten tag)/i.test(line.trim()));
+  const closingIndex = lines.findIndex((line) => /^mit freundlichen grüßen$/i.test(line.trim()));
+  if (salutationIndex === -1) return String(text || '');
+  return lines.slice(salutationIndex + 1, closingIndex === -1 ? undefined : closingIndex).join('\n').trim();
 }
 
 function createServerDraft({ personalData = {}, jobDetails, jobInput = '' }) {
