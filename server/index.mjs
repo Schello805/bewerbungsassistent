@@ -534,13 +534,14 @@ app.post('/api/generate-letter', async (request, response, next) => {
     const requestApiKey = typeof request.body.apiKey === 'string' ? request.body.apiKey.trim() : '';
     const apiKey = requestApiKey || getProviderApiKey(provider);
     const jobDetails = deriveJobDetails(request.body.jobInput, request.body.jobDetails);
+    const profile = await readProfileFromDataDir();
     const prompt = buildAiPrompt({
       personalData: request.body.personalData,
       jobInput: request.body.jobInput,
       jobDetails,
       voice: request.body.voice,
       promptNotes: request.body.promptNotes,
-      profile: await readProfileFromDataDir(),
+      profile,
     });
 
     if (providerRequiresApiKey(provider) && !apiKey) {
@@ -554,11 +555,12 @@ app.post('/api/generate-letter', async (request, response, next) => {
         personalData: request.body.personalData,
         jobDetails,
         jobInput: request.body.jobInput,
+        profile,
       });
       response.json({ text, jobDetails });
     } catch (providerError) {
       response.json({
-        text: createServerDraft({ personalData: request.body.personalData, jobDetails, jobInput: request.body.jobInput }),
+        text: createServerDraft({ personalData: request.body.personalData, jobDetails, jobInput: request.body.jobInput, profile }),
         jobDetails,
         warning: providerError instanceof Error
           ? `KI-Anbieter nicht verfügbar: ${providerError.message}`
@@ -633,6 +635,7 @@ app.post(['/api/compare-letter', '/compare-letter'], async (request, response, n
           personalData: request.body.personalData,
           jobDetails,
           jobInput: request.body.jobInput,
+          profile,
         });
         candidates.push({ provider: candidateProvider, text, ok: true });
       } catch (error) {
@@ -1187,6 +1190,8 @@ Regeln:
 - Nutze "ich" natürlich, aber nicht in jedem Satz am Anfang.
 - Wenn Profilbelege vorhanden sind, müssen mindestens 3 konkrete Qualifikationen, Zertifikate, Rollen oder Methoden aus dem Profil sinnvoll im Text vorkommen.
 - Nenne diese Belege natürlich im Fließtext, nicht als Aufzählung.
+- Nutze bevorzugt konkrete Beispiele aus der strukturierten Profilanalyse. Wenn Beispiele/Kennzahlen/Aufgaben vorhanden sind, baue mindestens eines davon als natürlicher Satz ein.
+- Verwandle Profilbelege in Wirkung: nicht nur "ISO 9001", sondern was der Bewerber damit bewirken kann, z. B. Standards sichern, Abweichungen nachhalten, Dokumentation verbessern.
 - Das Anschreiben muss echte Absätze haben: Zwischen jedem Haupttext-Absatz steht genau eine Leerzeile.
 - Jeder Haupttext-Absatz soll 2 bis 4 zusammenhängende Sätze enthalten.
 - Keine einzelnen Satzfragmente als eigener Absatz, außer Grußformel.
@@ -1229,8 +1234,8 @@ function deriveJobDetails(jobInput, clientJobDetails = {}) {
   const source = clientJobDetails?.source || detectJobSource(`${url} ${text}`);
   const title = extractServerJobTitle(text, url) || cleanServerTitle(clientJobDetails?.title || '');
   const company = extractServerCompany(text) || cleanServerCompany(clientJobDetails?.company || '');
-  const contact = cleanServerCompany(clientJobDetails?.contact || '');
-  const address = typeof clientJobDetails?.address === 'string' ? clientJobDetails.address : '';
+  const contact = extractServerContact(text) || cleanServerCompany(clientJobDetails?.contact || '');
+  const address = extractServerAddress(text) || (typeof clientJobDetails?.address === 'string' ? clientJobDetails.address : '');
   const recipient = [company, contact].filter(Boolean).join('\n') || clientJobDetails?.recipient || 'XXX Unternehmen\nXXX Ansprechpartner';
 
   return {
@@ -1274,10 +1279,29 @@ function extractServerJobTitle(text, url = '') {
 function extractServerCompany(text) {
   const primaryText = getPrimaryJobText(text);
   const normalized = normalizeText(primaryText);
+  const labelMatch = normalized.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80})(?:\s+Standort|\s+Kontakt|\s+Ihre|\s+Deine|\s+Aufgaben|$)/i)?.[1];
+  if (labelMatch) return cleanServerCompany(labelMatch);
   const xingCompany = normalized.match(/bei\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80})\s+in\s+[A-ZÄÖÜ]/)?.[1];
   if (xingCompany) return cleanServerCompany(xingCompany);
+  const employerMatch = normalized.match(/(?:Arbeitgeber|Unternehmen)\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/i)?.[1];
+  if (employerMatch) return cleanServerCompany(employerMatch);
   const legalMatch = normalized.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
   return legalMatch ? cleanServerCompany(legalMatch) : '';
+}
+
+function extractServerContact(text) {
+  const primaryText = getPrimaryJobText(text);
+  return primaryText.match(/(?:Ansprechpartner(?:in)?|Kontakt|Recruiter(?:in)?|Personal)\s*[:-]\s*((?:Frau|Herr)?\s*[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2})/i)?.[1]?.trim()
+    || primaryText.match(/\b(Frau|Herr)\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2}/)?.[0]
+    || '';
+}
+
+function extractServerAddress(text) {
+  const primaryText = getPrimaryJobText(text);
+  const labelMatch = primaryText.match(/(?:Adresse|Anschrift)\s*[:-]\s*([^\n]+(?:\n[^\n]+){0,2})/i)?.[1];
+  const directMatch = primaryText.match(/([A-ZÄÖÜ][\wÄÖÜäöüß. -]+\s+\d+[a-zA-Z]?,?\s*\n?\s*\d{5}\s+[A-ZÄÖÜ][\wÄÖÜäöüß -]+)/)?.[0];
+  const value = labelMatch || directMatch || '';
+  return value.split('\n').map((line) => line.trim()).filter((line) => line && !/stelle|job|bewerbung/i.test(line)).join('\n');
 }
 
 function getPrimaryJobText(text) {
@@ -1342,7 +1366,7 @@ function stabilizeGeneratedLetter(text, jobDetails) {
   return lines.join('\n');
 }
 
-function ensureSubstantialLetter({ text, personalData, jobDetails, jobInput }) {
+function ensureSubstantialLetter({ text, personalData, jobDetails, jobInput, profile }) {
   const mainText = extractMainLetterBody(text);
   const wordCount = mainText.split(/\s+/).filter(Boolean).length;
   const paragraphCount = mainText.split(/\n\s*\n/).filter((paragraph) => paragraph.trim().length > 40).length;
@@ -1351,7 +1375,7 @@ function ensureSubstantialLetter({ text, personalData, jobDetails, jobInput }) {
   if (wordCount >= 180 && paragraphCount >= 4 && hasSpecificSubject && !hasMechanicalPhrases) {
     return text;
   }
-  return createServerDraft({ personalData, jobDetails, jobInput });
+  return createServerDraft({ personalData, jobDetails, jobInput, profile });
 }
 
 function extractMainLetterBody(text) {
@@ -1362,7 +1386,7 @@ function extractMainLetterBody(text) {
   return lines.slice(salutationIndex + 1, closingIndex === -1 ? undefined : closingIndex).join('\n').trim();
 }
 
-function createServerDraft({ personalData = {}, jobDetails, jobInput = '' }) {
+function createServerDraft({ personalData = {}, jobDetails, jobInput = '', profile = {} }) {
   const date = new Intl.DateTimeFormat('de-DE').format(new Date());
   const contactLine = [
     personalData.email,
@@ -1390,12 +1414,20 @@ function createServerDraft({ personalData = {}, jobDetails, jobInput = '' }) {
   const methodReference = detectedMethods.length
     ? `Die genannten Schwerpunkte rund um ${joinNaturalServer(detectedMethods.slice(0, 5))} greifen Themen auf, die ich aus der praktischen Qualitätsarbeit kenne. Dabei ist mir wichtig, Qualität nicht nur formal zu dokumentieren, sondern Abweichungen nachvollziehbar zu bewerten, Ursachen sauber nachzuhalten und Standards gemeinsam mit den beteiligten Bereichen tragfähig umzusetzen.`
     : 'Die Aufgabe verlangt aus meiner Sicht vor allem, Qualitätsanforderungen strukturiert aufzunehmen, sauber zu bewerten und mit den beteiligten Bereichen in praktikable Abläufe zu übersetzen.';
-  const qualityEvidence = [
+  const structured = profile?.structured ?? {};
+  const qualityEvidence = uniqueMatches([
+    ...(structured.quality ?? []),
+    ...(structured.certificates ?? []),
+    ...(profile?.evidence ?? []),
     'Qualitätsmanagement',
     'Qualitätsmanagementbeauftragter',
     'VDA 6.3',
     'ISO 9001',
-  ];
+  ]).filter((value) => /qualität|qmb|vda|iso|audit|fmea|8d|lean|kvp/i.test(value)).slice(0, 5);
+  const profileExamples = [...(structured.examples ?? []), ...(structured.responsibilities ?? [])].filter(Boolean).slice(0, 2);
+  const examplesParagraph = profileExamples.length
+    ? `Aus meiner bisherigen Praxis bringe ich vor allem ein, ${profileExamples.map((example) => example.replace(/^ich\s+/i, '')).join(' und ')}. Entscheidend ist für mich dabei, Ergebnisse nicht nur festzuhalten, sondern Maßnahmen nachvollziehbar zu verfolgen und mit den beteiligten Bereichen sauber abzustimmen.`
+    : 'In meinen bisherigen Aufgaben war mir wichtig, Prozesse nicht nur zu beschreiben, sondern wirksam weiterzuentwickeln. Dazu gehören klare Standards, nachvollziehbare Entscheidungen, ein gutes Verständnis für Schnittstellen und die Fähigkeit, Fachbereiche so einzubinden, dass Qualität dauerhaft stabil bleibt.';
   return [
     personalData.name || 'XXX Name',
     personalData.qualification || '',
@@ -1413,11 +1445,11 @@ function createServerDraft({ personalData = {}, jobDetails, jobInput = '' }) {
     '',
     `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie Qualitätssicherung, Prozessverständnis und pragmatische Verbesserungsarbeit sinnvoll verbindet. Genau diese Verbindung aus klaren Anforderungen, verlässlicher Kommunikation und umsetzbaren Standards entspricht meiner Arbeitsweise.`,
     '',
-    `Als ${personalData.qualification || 'staatl. gepr. Betriebswirt'} verbinde ich betriebswirtschaftliches Denken mit einem praktischen Blick auf Prozesse, Schnittstellen und Qualität im Tagesgeschäft. Durch Qualitätsmanagement, meine Rolle als Qualitätsmanagementbeauftragter sowie den Bezug zu ${joinNaturalServer(qualityEvidence.slice(2))} kann ich Anforderungen nachvollziehbar strukturieren, Dokumentation belastbar aufbauen und Verbesserungen so gestalten, dass sie im Alltag funktionieren.`,
+    `Als ${personalData.qualification || 'staatl. gepr. Betriebswirt'} verbinde ich betriebswirtschaftliches Denken mit einem praktischen Blick auf Prozesse, Schnittstellen und Qualität im Tagesgeschäft. Durch ${joinNaturalServer(qualityEvidence.slice(0, 4))} kann ich Anforderungen nachvollziehbar strukturieren, Dokumentation belastbar aufbauen und Verbesserungen so gestalten, dass sie im Alltag funktionieren.`,
     '',
     methodReference,
     '',
-    'In meinen bisherigen Aufgaben war mir wichtig, Prozesse nicht nur zu beschreiben, sondern wirksam weiterzuentwickeln. Dazu gehören klare Standards, nachvollziehbare Entscheidungen, ein gutes Verständnis für Schnittstellen und die Fähigkeit, Fachbereiche so einzubinden, dass Qualität dauerhaft stabil bleibt.',
+    examplesParagraph,
     '',
     'Gerne erläutere ich Ihnen in einem persönlichen Gespräch, wie ich Ihr Team konkret unterstützen kann.',
     '',
@@ -1514,7 +1546,7 @@ function buildProfileContext(profile) {
 
   return [
     `Verbindliche Profilbelege für das Anschreiben: ${evidence.slice(0, 18).join(', ') || 'keine eindeutig erkannt'}`,
-    `Strukturierte Profilanalyse: Stationen=${(structured.stations ?? []).slice(0, 8).join(', ') || '-'}; Skills=${(structured.skills ?? []).slice(0, 10).join(', ') || '-'}; Zertifikate=${(structured.certificates ?? []).slice(0, 10).join(', ') || '-'}; Berufserfahrung=${(structured.experience ?? []).slice(0, 8).join(', ') || '-'}; Aufgaben=${(structured.responsibilities ?? []).slice(0, 10).join(', ') || '-'}; Branchen=${(structured.industries ?? []).slice(0, 8).join(', ') || '-'}; Führung=${(structured.leadership ?? []).slice(0, 8).join(', ') || '-'}; QM/Audit=${(structured.quality ?? []).slice(0, 10).join(', ') || '-'}; Tools=${(structured.tools ?? []).slice(0, 8).join(', ') || '-'}`,
+    `Strukturierte Profilanalyse: Stationen=${(structured.stations ?? []).slice(0, 8).join(', ') || '-'}; Skills=${(structured.skills ?? []).slice(0, 10).join(', ') || '-'}; Zertifikate=${(structured.certificates ?? []).slice(0, 10).join(', ') || '-'}; Berufserfahrung=${(structured.experience ?? []).slice(0, 8).join(', ') || '-'}; Aufgaben=${(structured.responsibilities ?? []).slice(0, 10).join(', ') || '-'}; Beispiele=${(structured.examples ?? []).slice(0, 8).join(' | ') || '-'}; Kennzahlen/Steuerung=${(structured.metrics ?? []).slice(0, 8).join(', ') || '-'}; Branchen=${(structured.industries ?? []).slice(0, 8).join(', ') || '-'}; Führung=${(structured.leadership ?? []).slice(0, 8).join(', ') || '-'}; QM/Audit=${(structured.quality ?? []).slice(0, 10).join(', ') || '-'}; Tools=${(structured.tools ?? []).slice(0, 8).join(', ') || '-'}`,
     `Kompetenzen: ${(insights.skills ?? []).slice(0, 10).join(', ') || 'keine eindeutig erkannt'}`,
     `Rollen/Erfahrung: ${(insights.roles ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
     `Ausbildung/Zertifikate: ${(insights.education ?? []).slice(0, 6).join(', ') || 'keine eindeutig erkannt'}`,
@@ -1851,7 +1883,7 @@ function extractStructuredProfile(text, documents = []) {
   ]).slice(0, 10);
   const leadership = matchKnownTerms(normalized, ['Führung', 'Teamführung', 'Leitung', 'Projektleitung', 'Verantwortung', 'Koordination', 'Head', 'Manager']).slice(0, 10);
   const quality = matchKnownTerms(normalized, ['Qualitätsmanagement', 'Qualitätssicherung', 'QMB', 'VDA 6.3', 'ISO 9001', 'IATF 16949', 'Audit', 'Auditor', '8D', 'FMEA', 'APQP', 'PPAP']).slice(0, 14);
-  const tools = matchKnownTerms(normalized, ['SAP', 'Excel', 'Power BI', 'MS Office', 'ERP', 'CAQ', 'Ollama', 'Google Docs']).slice(0, 10);
+  const tools = matchKnownTerms(normalized, ['SAP', 'Excel', 'Power BI', 'MS Office', 'ERP', 'CAQ', 'CRM', 'SharePoint', 'Ollama', 'Google Docs']).slice(0, 10);
   const certificateDocuments = documents
     .filter((document) => document.type === 'Zertifikate' || /zertifikat|certificate|coursera|vda|iso|audit|qmb/i.test(document.fileName))
     .map((document) => cleanDocumentProfilePoint(document.fileName));
@@ -1868,6 +1900,11 @@ function extractStructuredProfile(text, documents = []) {
     ...matchKnownTerms(normalized, ['Prozessoptimierung', 'Dokumentation', 'Auditplanung', 'Reklamationsbearbeitung', 'Lieferantenmanagement', 'Kennzahlen', 'KPI', 'Reporting', 'Standardisierung', 'Schulung', 'Schnittstellenkommunikation']),
     ...(normalized.match(/\b(?:verantwortlich für|zuständig für|durchführung von|erstellung von|koordination von)\s+[^.]{8,90}/gi) ?? []),
   ]).slice(0, 12);
+  const examples = extractProfileExamples(normalized);
+  const metrics = uniqueProfilePoints([
+    ...matchKnownTerms(normalized, ['Kennzahlen', 'KPI', 'Reporting', 'Auswertung', 'Analyse', 'Controlling', 'Maßnahmenverfolgung', 'Reklamationsquote', 'Auditabweichungen']),
+    ...(normalized.match(/\b(?:kennzahlen|kpi|reporting|auswertung|analyse|controlling|maßnahmenverfolgung)[^.]{0,80}/gi) ?? []),
+  ]).slice(0, 10);
 
   return {
     stations,
@@ -1879,7 +1916,30 @@ function extractStructuredProfile(text, documents = []) {
     leadership,
     quality,
     tools,
+    examples,
+    metrics,
   };
+}
+
+function extractProfileExamples(text) {
+  const sentenceCandidates = normalizeText(text)
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => /\b(?:audit|qmb|qualitäts|prozess|dokumentation|standard|kennzahl|kpi|reporting|reklamation|fmea|8d|vda|iso|lean|kvp|koordination|verantwortlich|zuständig|durchführung|erstellung|optimierung)\b/i.test(sentence))
+    .map(cleanProfileExampleSentence)
+    .filter(Boolean);
+  return uniqueMatches(sentenceCandidates).slice(0, 10);
+}
+
+function cleanProfileExampleSentence(value) {
+  const cleaned = normalizeText(value)
+    .replace(/\bHerr\s+Schellenberger\b/gi, 'ich')
+    .replace(/\bMichael\s+Schellenberger\b/gi, 'ich')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length < 6 || words.length > 24) return '';
+  if (/\b(?:mietvertrag|versicherungsschutz|rufbereitschaft|auszubildenden|vorgesetzter|beurteilender)\b/i.test(cleaned)) return '';
+  return cleaned.replace(/[.!?]+$/g, '');
 }
 
 function matchKnownTerms(text, terms) {

@@ -59,6 +59,8 @@ type ProfileData = {
     certificates: string[];
     experience?: string[];
     responsibilities?: string[];
+    examples?: string[];
+    metrics?: string[];
     industries: string[];
     leadership: string[];
     quality: string[];
@@ -98,7 +100,7 @@ type RecipientDraft = {
   contact: string;
   address: string;
 };
-type PendingExportAction = 'save' | 'docx' | 'google' | null;
+type PendingExportAction = 'save' | 'docx' | 'google' | 'copy' | null;
 type GoogleSetupState = {
   level: 'success' | 'warning' | 'error';
   title: string;
@@ -831,8 +833,13 @@ function ApplicationShell() {
   }
 
   async function copyForGoogleDocs() {
+    if (!ensureRecipientCompleted('copy')) return;
+    await performCopyForGoogleDocs();
+  }
+
+  async function performCopyForGoogleDocs(textOverride = draft) {
     try {
-      await copyTextToClipboard(draft);
+      await copyTextToClipboard(textOverride);
       setLetterStatus('Text kopiert.');
     } catch {
       setLetterStatus('Text konnte nicht automatisch kopiert werden. Bitte im Editor markieren und kopieren.');
@@ -944,6 +951,7 @@ function ApplicationShell() {
     if (action === 'save') await performSaveFinalLetter(nextDraft);
     if (action === 'docx') await performDownloadDocx(nextDraft);
     if (action === 'google') await performOpenGoogleDocs(nextDraft);
+    if (action === 'copy') await performCopyForGoogleDocs(nextDraft);
   }
 
   async function openLetter(id: string) {
@@ -1278,6 +1286,7 @@ function ApplicationShell() {
                       {activeCandidate.ok ? (
                         <>
                           <div className="candidate-insights">
+                            {getCandidateBadges(activeCandidate, activeCandidateIndex === bestCandidateIndex).map((badge) => <span key={badge}>{badge}</span>)}
                             {activeCandidate.scoreReasons?.map((reason) => <span key={reason}>{reason}</span>)}
                             {activeCandidate.costLabel && <span>{activeCandidate.costLabel}</span>}
                           </div>
@@ -1747,12 +1756,17 @@ function ProfileStructureSummary({ profile }: { profile: ProfileData }) {
     ['Zertifikate', structured?.certificates ?? []],
     ['Berufserfahrung', structured?.experience ?? []],
     ['Aufgaben', structured?.responsibilities ?? []],
+    ['Konkrete Beispiele', structured?.examples ?? []],
+    ['Kennzahlen / Steuerung', structured?.metrics ?? []],
     ['Branchen', structured?.industries ?? []],
     ['Führung', structured?.leadership ?? []],
     ['QM / Audit', structured?.quality ?? []],
     ['Tools', structured?.tools ?? []],
   ];
-  const groups = rawGroups.map(([label, values]) => [label, values.filter(isCleanProfilePoint).slice(0, 12)] as const);
+  const groups = rawGroups.map(([label, values]) => [
+    label,
+    values.filter((value) => label === 'Konkrete Beispiele' ? isCleanProfileExample(value) : isCleanProfilePoint(value)).slice(0, 12),
+  ] as const);
   const visibleGroups = groups.filter(([, values]) => values.length > 0);
 
   if (visibleGroups.length === 0) {
@@ -1779,6 +1793,14 @@ function isCleanProfilePoint(value: string) {
   if (/[.!?]/.test(value)) return false;
   if (/\b(?:herr|frau)\s+schellenberger\b/i.test(value)) return false;
   if (/\b(?:übernahm|überwachte|forderte|erstellte|absolvierte|vorgesetzter|mietvertrag|versicherungsschutz|rufbereitschaft|ansprechpartner)\b/i.test(value)) return false;
+  return true;
+}
+
+function isCleanProfileExample(value: string) {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (!value.trim() || value.length > 180 || words.length > 28) return false;
+  if (/\b(?:herr|frau)\s+schellenberger\b/i.test(value)) return false;
+  if (/\b(?:mietvertrag|versicherungsschutz|rufbereitschaft|vorgesetzter|beurteilender)\b/i.test(value)) return false;
   return true;
 }
 
@@ -1843,7 +1865,7 @@ function createDraft({ personalData, jobDetails, profile }: { personalData: Pers
     '',
     jobDetails.salutation,
     '',
-    `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie operative Verantwortung mit klarer Prozess- und Qualitätsorientierung verbindet. Genau an dieser Schnittstelle arbeite ich besonders gern: Strukturen schaffen, Abläufe verständlich machen und Verbesserungen so umsetzen, dass sie im Tagesgeschäft tragen.`,
+    `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie Qualitätssicherung, Prozessverständnis und pragmatische Verbesserungsarbeit sinnvoll verbindet. Genau in diesem Umfeld arbeite ich gern: Anforderungen sauber aufnehmen, Standards verständlich machen und Verbesserungen so umsetzen, dass sie im Alltag tragen.`,
     '',
     profileParagraph,
     '',
@@ -1928,6 +1950,10 @@ function getProfileEvidence(profile: ProfileData) {
     ...(structured?.stations ?? []),
     ...(structured?.skills ?? []),
     ...(structured?.certificates ?? []),
+    ...(structured?.experience ?? []),
+    ...(structured?.responsibilities ?? []),
+    ...(structured?.examples ?? []),
+    ...(structured?.metrics ?? []),
     ...(structured?.industries ?? []),
     ...(structured?.leadership ?? []),
     ...(structured?.quality ?? []),
@@ -1942,7 +1968,8 @@ function createMatchItems(jobInput: string, profileEvidence: string[]) {
     { label: 'Führung / Verantwortung', terms: ['leitung', 'führung', 'team', 'verantwortung', 'lead', 'head'] },
     { label: 'Prozesse / Verbesserung', terms: ['prozess', 'lean', 'kaizen', 'kvp', 'optimierung', 'continuous improvement'] },
     { label: 'Zahlen / Steuerung', terms: ['controlling', 'kennzahlen', 'kpi', 'reporting', 'analyse'] },
-    { label: 'IT / Tools', terms: ['sap', 'excel', 'power bi', 'digital', 'system'] },
+    { label: 'IT / Tools', terms: ['sap', 'excel', 'power bi', 'digital', 'system', 'erp', 'caq', 'crm', 'ms office'] },
+    { label: 'Konkrete Praxisbeispiele', terms: ['audit', 'reklamation', 'fmea', '8d', 'standard', 'dokumentation', 'prüfung', 'maßnahme'] },
   ];
 
   return requirementGroups
@@ -1985,6 +2012,13 @@ function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvide
     'schnell in neue aufgaben einzuarbeiten',
     'mit großem interesse',
   ].filter((phrase) => normalizedDraft.includes(phrase)).length;
+  const mechanicalPhraseHits = [
+    'an der stelle erkenne ich',
+    'diese anforderungen passen zu meinem profil',
+    'profilbelege',
+    'stellen-matching',
+    'strukturierte profilanalyse',
+  ].filter((phrase) => normalizedDraft.includes(phrase)).length;
   const hasConcreteExample = /\b(vda\s*6\.3|iso\s*9001|qmb|audit|kennzahl|sap|lean|kvp|kaizen|fmea|8d|power bi|projekt|prozess)/i.test(draft);
   const placeholderMatches = draft.match(/\bXXX\b|\[[^\]]+\]/g) ?? [];
   const hasPlaceholders = placeholderMatches.length > 0;
@@ -1993,6 +2027,7 @@ function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvide
   const titleFromSubject = subjectLine.replace(/^bewerbung\s+als\s+/i, '').trim();
   const titleForCheck = jobDetails.title || titleFromSubject;
   const hasSubject = /^bewerbung\s+als\s+.{3,}/i.test(subjectLine.trim());
+  const hasCleanSubject = hasSubject && !/\s[-–]\s|job[- ]?id|kennziffer|xing|linkedin|stepstone|alpha-engineering|gmbh|ag|kg/i.test(subjectLine);
   const hasJobReference = Boolean(titleForCheck && normalizedDraft.includes(titleForCheck.toLowerCase().slice(0, 12)));
   const placeholderHint = hasRecipientPlaceholder
     ? 'Empfängerblock enthält noch XXX. Bitte Unternehmen, Ansprechpartner und Adresse ergänzen.'
@@ -2001,12 +2036,14 @@ function createQualityChecks(draft: string, jobDetails: JobDetails, profileEvide
   return [
     { label: 'Länge ausreichend', ok: words.length >= 220, hint: `Aktuell ${words.length} Wörter. Ziel: ca. 220–360 Wörter.` },
     { label: 'Betreff vorhanden', ok: hasSubject, hint: 'Betreff sollte als eigene Zeile mit „Bewerbung als …“ beginnen.' },
+    { label: 'Betreff sauber', ok: hasCleanSubject, hint: 'Betreff kurz halten: keine Firma, kein Ort, keine Job-ID.' },
     { label: 'Anrede vorhanden', ok: /sehr geehrte|guten tag/i.test(draft), hint: 'Eine passende Anrede fehlt oder wurde nicht erkannt.' },
     { label: 'Mindestens 3 Profilbelege', ok: evidenceHits >= 3, hint: `Aktuell erkannt: ${evidenceHits}. Mehr konkrete Qualifikationen aus dem Profil einbauen.` },
     { label: 'Stellenbezug vorhanden', ok: hasJobReference, hint: 'Die konkrete Position sollte im Einstieg oder Matching-Absatz vorkommen.' },
     { label: 'Empfänger und Platzhalter vollständig', ok: !hasPlaceholders, hint: placeholderHint },
     { label: 'Konkrete Beispiele vorhanden', ok: hasConcreteExample, hint: 'Mindestens ein konkretes Beispiel, Zertifikat, Tool oder methodischer Bezug sollte sichtbar sein.' },
     { label: 'Nicht zu generisch', ok: genericPhraseHits <= 2, hint: 'Der Text nutzt noch zu viele Standardformulierungen. Besser konkreter und persönlicher formulieren.' },
+    { label: 'Keine Analyse-Sprache', ok: mechanicalPhraseHits === 0, hint: 'Der Text klingt noch nach Tool-Ausgabe. Analyseformulierungen entfernen.' },
     { label: 'Keine auffälligen Wiederholungen', ok: repeatedPhrases.length === 0, hint: `Wiederholung prüfen: ${repeatedPhrases.slice(0, 2).join(', ')}` },
     { label: 'Schlussformel vorhanden', ok: normalizedDraft.includes('mit freundlichen grüßen'), hint: 'Die Schlussformel „Mit freundlichen Grüßen“ fehlt.' },
   ];
@@ -2053,6 +2090,18 @@ function getBestCandidateIndex(candidates: AiCandidate[]) {
     }
   });
   return bestIndex;
+}
+
+function getCandidateBadges(candidate: AiCandidate, isBest: boolean) {
+  if (!candidate.ok || !candidate.text) return [];
+  const text = candidate.text.toLowerCase();
+  const words = candidate.text.split(/\s+/).filter(Boolean).length;
+  const badges = [];
+  if (isBest) badges.push('Empfohlen');
+  if (words >= 260) badges.push('Detailliert');
+  if (/\b(vda\s*6\.3|iso\s*9001|audit|fmea|8d|qmb|kennzahl|kpi)\b/i.test(candidate.text)) badges.push('Konkret');
+  if (!/mit großem interesse|spricht mich sehr an|neue herausforderung/i.test(text)) badges.push('Natürlich');
+  return badges.slice(0, 4);
 }
 
 function filterApplications(applications: ApplicationRecord[], search: string, status: ApplicationStatus | 'Alle', dueOnly: boolean) {
@@ -2318,12 +2367,16 @@ function extractCompany(text: string) {
   const labelMatch = primaryText.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([^\n]{3,90})/i)?.[1];
   if (labelMatch) return cleanRecipientValue(labelMatch);
   const normalized = primaryText.replace(/\s+/g, ' ');
+  const employerLabelMatch = normalized.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80})(?:\s+Standort|\s+Kontakt|\s+Ihre|\s+Deine|\s+Aufgaben|$)/i)?.[1];
+  if (employerLabelMatch) return cleanRecipientValue(employerLabelMatch);
   const teilkonzernMatch = normalized.match(/Teilkonzern:\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})(?:\s+Start:|\s+Bewerber|\s+Das sind|\s+Standort:)/i)?.[1];
   if (teilkonzernMatch) return cleanRecipientValue(teilkonzernMatch);
   const companyDetailsMatch = normalized.match(/Unternehmens-Details\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})(?:\s+Mess|\s+Maschinen|\s+Automotive|\s+Nürnberg|\s+Deutschland|\s+Ähnliche Jobs)/i)?.[1];
   if (companyDetailsMatch) return cleanRecipientValue(companyDetailsMatch);
   const introMatch = normalized.match(/\bBei\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})\s+(?:verbinden|entwickeln|arbeiten|stehen|setzen)\s+wir\b/i)?.[1];
   if (introMatch) return cleanRecipientValue(introMatch);
+  const employerMatch = normalized.match(/(?:Arbeitgeber|Unternehmen)\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/i)?.[1];
+  if (employerMatch) return cleanRecipientValue(employerMatch);
   const legalMatch = primaryText.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
   if (legalMatch) return cleanRecipientValue(legalMatch);
   const aboutIndex = lines.findIndex((line) => /über uns|unternehmen|wer wir sind/i.test(line));
@@ -2334,13 +2387,13 @@ function extractCompany(text: string) {
 }
 
 function extractContact(text: string) {
-  return text.match(/(?:Ansprechpartner(?:in)?|Kontakt|Recruiter(?:in)?)\s*[:-]\s*((?:Frau|Herr)?\s*[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2})/i)?.[1]?.trim()
+  return text.match(/(?:Ansprechpartner(?:in)?|Kontakt|Recruiter(?:in)?|Personal)\s*[:-]\s*((?:Frau|Herr)?\s*[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2})/i)?.[1]?.trim()
     || text.match(/\b(Frau|Herr)\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2}/)?.[0]
     || '';
 }
 
 function extractAddress(text: string) {
-  const labelMatch = text.match(/(?:Adresse|Anschrift|Standort)\s*[:-]\s*([^\n]+(?:\n[^\n]+){0,2})/i)?.[1];
+  const labelMatch = text.match(/(?:Adresse|Anschrift)\s*[:-]\s*([^\n]+(?:\n[^\n]+){0,2})/i)?.[1];
   const address = labelMatch || text.match(/([A-ZÄÖÜ][\wÄÖÜäöüß. -]+\s+\d+[a-zA-Z]?,?\s*\n?\s*\d{5}\s+[A-ZÄÖÜ][\wÄÖÜäöüß -]+)/)?.[0];
   return address?.split('\n').map((line) => line.trim()).filter(Boolean).join('\n') ?? '';
 }
