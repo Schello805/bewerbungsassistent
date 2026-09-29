@@ -68,7 +68,7 @@ Das Installationsscript führt die Einrichtung vollständig aus:
 - Healthcheck ausführen
 - lokale URL und Netzwerk-URL ausgeben
 
-Der Installer legt außerdem automatische tägliche Backups unter `data/backups/` an. Standardmäßig werden die letzten 14 Auto-Backups behalten. Über `AUTO_BACKUP=0` kann das deaktiviert werden; über `AUTO_BACKUP_KEEP=30` kann die Anzahl geändert werden.
+Der Installer legt außerdem automatische tägliche Backups unter `data/backups/` an. Standardmäßig werden Backups `30 Tage` behalten. Über `AUTO_BACKUP=0` kann das deaktiviert werden; über `AUTO_BACKUP_RETENTION_DAYS=90` kann die Aufbewahrung geändert werden.
 
 ### Optionale Parameter
 
@@ -83,6 +83,83 @@ Weitere optionale Variablen:
 REPO_URL=https://github.com/Schello805/bewerbungsassistent.git
 NODE_MAJOR=22
 ```
+
+## Installation unter CapRover
+
+Das Repository enthält eine fertige `captain-definition` und ein `Dockerfile`. CapRover kann die App dadurch direkt aus GitHub bauen.
+
+### App in CapRover anlegen
+
+1. In CapRover eine neue App erstellen, z. B. `bewerbungsassistent`.
+2. Unter **Deployment → Method 3: Deploy from Github/Bitbucket/Gitlab** dieses Repository hinterlegen:
+
+```text
+https://github.com/Schello805/bewerbungsassistent
+```
+
+3. Branch auswählen:
+
+```text
+main
+```
+
+4. Deployment starten.
+
+### Persistente Daten einrichten
+
+Damit Datenbank, Uploads, API-Keys, Backups und gespeicherte Anschreiben Updates überleben, muss ein persistentes Volume gesetzt werden:
+
+```text
+App Configs → Persistent Directories
+Path in App: /app/storage
+Label: bewerbungsassistent-storage
+```
+
+Die App nutzt im Docker-/CapRover-Betrieb automatisch:
+
+```text
+STORAGE_DIR=/app/storage
+```
+
+Darunter werden abgelegt:
+
+```text
+/app/storage/data        SQLite-Datenbank, Schlüssel und Backups
+/app/storage/datenbasis  hochgeladene Unterlagen
+/app/storage/anschreiben reservierter Ordner für Anschreiben-Dateien
+```
+
+### CapRover Environment Variables
+
+Normalerweise reichen die Standardwerte aus:
+
+```text
+NODE_ENV=production
+PORT=80
+HOST=0.0.0.0
+STORAGE_DIR=/app/storage
+AUTO_BACKUP=1
+AUTO_BACKUP_RETENTION_DAYS=30
+```
+
+Optional für lokales Llama/Ollama:
+
+```text
+OLLAMA_URL=http://DEIN-OLLAMA-SERVER:11434/api/generate
+OLLAMA_MODEL=llama3.1
+```
+
+### Backup unter CapRover
+
+In der App unter **Einstellungen → Backup** gibt es:
+
+- Backup als Datei herunterladen
+- Backup-Datei wieder einspielen
+- Server-Backup direkt im persistenten Volume erstellen
+- vorhandene Server-Backups wiederherstellen
+- Aufbewahrung der Server-Backups: `30 Tage`, `90 Tage` oder freie Anzahl Tage
+
+Automatische Backups werden täglich unter `/app/storage/data/backups/` gespeichert. Die Aufbewahrung kann in der App geändert werden und wird in SQLite gespeichert.
 
 ## Update
 
