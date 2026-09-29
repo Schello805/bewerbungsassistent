@@ -15,9 +15,10 @@ import crypto from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
-const dataDir = path.join(rootDir, 'datenbasis');
-const lettersDir = path.join(rootDir, 'anschreiben');
-const storageDir = path.join(rootDir, 'data');
+const storageRoot = process.env.STORAGE_DIR ? path.resolve(process.env.STORAGE_DIR) : rootDir;
+const dataDir = process.env.DATA_BASIS_DIR ? path.resolve(process.env.DATA_BASIS_DIR) : path.join(storageRoot, 'datenbasis');
+const lettersDir = process.env.LETTERS_DIR ? path.resolve(process.env.LETTERS_DIR) : path.join(storageRoot, 'anschreiben');
+const storageDir = process.env.APP_DATA_DIR ? path.resolve(process.env.APP_DATA_DIR) : path.join(storageRoot, 'data');
 const backupsDir = path.join(storageDir, 'backups');
 const databasePath = path.join(storageDir, 'app.db');
 const secretPath = path.join(storageDir, 'secret.key');
@@ -155,6 +156,7 @@ app.get('/api/settings', (_request, response, next) => {
       profileEvidence: getSetting('profileEvidence', []),
       promptNotes: getSetting('promptNotes', ''),
       apiKeyStorageMode: getSetting('apiKeyStorageMode', 'server'),
+      backupRetentionDays: getBackupRetentionDays(),
       apiKeyProviders: Object.entries(apiKeys)
         .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
         .map(([key]) => key),
@@ -219,6 +221,9 @@ app.put('/api/settings', (request, response, next) => {
     }
     if ('apiKeyStorageMode' in request.body) {
       setSetting('apiKeyStorageMode', request.body.apiKeyStorageMode === 'session' ? 'session' : 'server');
+    }
+    if ('backupRetentionDays' in request.body) {
+      setSetting('backupRetentionDays', normalizeBackupRetentionDays(request.body.backupRetentionDays));
     }
     if ('promptNotes' in request.body) {
       setSetting('promptNotes', String(request.body.promptNotes || '').trim().slice(0, 3000));
@@ -504,10 +509,52 @@ app.get('/api/backup', async (_request, response, next) => {
   }
 });
 
+app.get('/api/backups', async (_request, response, next) => {
+  try {
+    response.json({
+      backups: await listServerBackups(),
+      retentionDays: getBackupRetentionDays(),
+      backupsDir,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/backups', async (_request, response, next) => {
+  try {
+    const backupFile = await createServerBackup('manual');
+    response.status(201).json({
+      ok: true,
+      backup: backupFile,
+      backups: await listServerBackups(),
+      retentionDays: getBackupRetentionDays(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/backup/restore', async (request, response, next) => {
   try {
     await restoreBackup(request.body);
     response.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/backups/:fileName/restore', async (request, response, next) => {
+  try {
+    const fileName = sanitizeBackupFileName(request.params.fileName);
+    const filePath = path.join(backupsDir, fileName);
+    if (!filePath.startsWith(backupsDir)) {
+      response.status(400).json({ error: 'Ungültiger Backup-Dateiname.' });
+      return;
+    }
+    const backup = JSON.parse(await fs.readFile(filePath, 'utf8'));
+    await restoreBackup(backup);
+    response.json({ ok: true, restored: fileName });
   } catch (error) {
     next(error);
   }
@@ -903,29 +950,82 @@ async function createBackup() {
 
 async function runAutomaticBackup() {
   if (process.env.AUTO_BACKUP === '0' || process.env.AUTO_BACKUP === 'false') return;
+  await createServerBackup('auto', { oncePerDay: true });
+}
+
+async function createServerBackup(kind = 'manual', options = {}) {
   await fs.mkdir(backupsDir, { recursive: true });
   const stamp = new Date().toISOString().slice(0, 10);
-  const filePath = path.join(backupsDir, `bewerbungsassistent-auto-${stamp}.json`);
-  try {
-    await fs.access(filePath);
-    return;
-  } catch {
-    // No backup for today yet.
+  const time = new Date().toISOString().slice(11, 19).replaceAll(':', '-');
+  const prefix = kind === 'auto' ? 'bewerbungsassistent-auto' : 'bewerbungsassistent-manual';
+  const fileName = kind === 'auto' ? `${prefix}-${stamp}.json` : `${prefix}-${stamp}-${time}.json`;
+  const filePath = path.join(backupsDir, fileName);
+  if (options.oncePerDay) {
+    try {
+      await fs.access(filePath);
+      return getServerBackupInfo(fileName);
+    } catch {
+      // No backup for today yet.
+    }
   }
   const backup = await createBackup();
   await fs.writeFile(filePath, JSON.stringify(backup, null, 2), { mode: 0o600 });
   await pruneAutomaticBackups();
+  return getServerBackupInfo(fileName);
 }
 
 async function pruneAutomaticBackups() {
-  const keep = Number(process.env.AUTO_BACKUP_KEEP || 14);
+  const retentionDays = getBackupRetentionDays();
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
   const entries = await fs.readdir(backupsDir, { withFileTypes: true });
-  const backupFiles = entries
-    .filter((entry) => entry.isFile() && /^bewerbungsassistent-auto-\d{4}-\d{2}-\d{2}\.json$/.test(entry.name))
-    .map((entry) => entry.name)
-    .sort()
-    .reverse();
-  await Promise.all(backupFiles.slice(keep).map((fileName) => fs.unlink(path.join(backupsDir, fileName)).catch(() => {})));
+  await Promise.all(entries
+    .filter((entry) => entry.isFile() && /^bewerbungsassistent-(?:auto|manual)-\d{4}-\d{2}-\d{2}(?:-\d{2}-\d{2}-\d{2})?\.json$/.test(entry.name))
+    .map(async (entry) => {
+      const filePath = path.join(backupsDir, entry.name);
+      const stats = await fs.stat(filePath).catch(() => null);
+      if (stats && stats.mtime.getTime() < cutoff) {
+        await fs.unlink(filePath).catch(() => {});
+      }
+    }));
+}
+
+async function listServerBackups() {
+  await fs.mkdir(backupsDir, { recursive: true });
+  await pruneAutomaticBackups();
+  const entries = await fs.readdir(backupsDir, { withFileTypes: true });
+  const backups = await Promise.all(entries
+    .filter((entry) => entry.isFile() && /^bewerbungsassistent-(?:auto|manual)-\d{4}-\d{2}-\d{2}(?:-\d{2}-\d{2}-\d{2})?\.json$/.test(entry.name))
+    .map((entry) => getServerBackupInfo(entry.name)));
+  return backups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+async function getServerBackupInfo(fileName) {
+  const filePath = path.join(backupsDir, fileName);
+  const stats = await fs.stat(filePath);
+  return {
+    fileName,
+    kind: fileName.includes('-manual-') ? 'manual' : 'auto',
+    size: stats.size,
+    createdAt: stats.mtime.toISOString(),
+  };
+}
+
+function getBackupRetentionDays() {
+  return normalizeBackupRetentionDays(getSetting('backupRetentionDays', process.env.AUTO_BACKUP_RETENTION_DAYS || process.env.AUTO_BACKUP_KEEP || 30));
+}
+
+function normalizeBackupRetentionDays(value) {
+  const days = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(days)) return 30;
+  return Math.min(3650, Math.max(1, days));
+}
+
+function sanitizeBackupFileName(fileName) {
+  const sanitized = sanitizeFileName(fileName);
+  if (!/^bewerbungsassistent-(?:auto|manual)-\d{4}-\d{2}-\d{2}(?:-\d{2}-\d{2}-\d{2})?\.json$/.test(sanitized)) {
+    throw new Error('Ungültiger Backup-Dateiname.');
+  }
+  return sanitized;
 }
 
 async function restoreBackup(backup) {

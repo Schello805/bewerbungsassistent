@@ -1091,6 +1091,53 @@ textarea:focus {
   width: 100%;
 }
 
+.backup-retention-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 180px) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 14px;
+}
+
+.backup-retention-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.server-backup-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.server-backup-list ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.server-backup-list li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.server-backup-list li span {
+  display: grid;
+  gap: 2px;
+}
+
 .backup-feedback {
   display: inline-flex;
   align-items: center;
@@ -1943,6 +1990,16 @@ textarea:focus {
 
   .backup-actions {
     grid-template-columns: 1fr;
+  }
+
+  .backup-retention-grid,
+  .server-backup-list li {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .server-backup-list li {
+    display: grid;
   }
 
   .api-field {

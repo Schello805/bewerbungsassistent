@@ -21,6 +21,13 @@ type SavedLetter = {
   text?: string;
 };
 
+type ServerBackup = {
+  fileName: string;
+  kind: 'auto' | 'manual';
+  size: number;
+  createdAt: string;
+};
+
 type ApplicationRecord = {
   id: string;
   title: string;
@@ -172,6 +179,9 @@ function ApplicationShell() {
   const [backupStatus, setBackupStatus] = useState('');
   const [backupStatusType, setBackupStatusType] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [isBackupWorking, setIsBackupWorking] = useState(false);
+  const [serverBackups, setServerBackups] = useState<ServerBackup[]>([]);
+  const [backupRetentionDays, setBackupRetentionDays] = useState(30);
+  const [backupRetentionMode, setBackupRetentionMode] = useState<'30' | '90' | 'custom'>('30');
   const [activeLetterId, setActiveLetterId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<AiCandidate[]>([]);
   const [activeCandidateIndex, setActiveCandidateIndex] = useState(0);
@@ -286,6 +296,7 @@ function ApplicationShell() {
         profileEvidence?: string[];
         apiKeyStorageMode?: ApiKeyStorageMode | null;
         promptNotes?: string | null;
+        backupRetentionDays?: number | null;
       };
       if (data.personalData) {
         const nextPersonalData = { ...defaultPersonalData, ...data.personalData };
@@ -310,6 +321,10 @@ function ApplicationShell() {
       if (typeof data.promptNotes === 'string') {
         setPromptNotes(data.promptNotes);
       }
+      if (typeof data.backupRetentionDays === 'number') {
+        setBackupRetentionDays(data.backupRetentionDays);
+        setBackupRetentionMode(data.backupRetentionDays === 30 ? '30' : data.backupRetentionDays === 90 ? '90' : 'custom');
+      }
       if (data.apiKeyStorageMode === 'session' || data.apiKeyStorageMode === 'server') {
         setApiKeyStorageMode(data.apiKeyStorageMode);
       }
@@ -324,6 +339,7 @@ function ApplicationShell() {
     void loadDocuments();
     void loadLetters();
     void loadApplications();
+    void loadServerBackups();
   }, [loadApplications, loadDocuments, loadLetters, loadSettings]);
 
   useEffect(() => {
@@ -364,7 +380,7 @@ function ApplicationShell() {
     });
   }, [profile, profileEvidenceText]);
 
-  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string; profileEvidence?: string[]; apiKeyStorageMode?: ApiKeyStorageMode; promptNotes?: string }) {
+  async function saveSettings(nextSettings: { personalData?: PersonalData; provider?: string; voice?: string; apiKey?: string; googleClientId?: string; profileEvidence?: string[]; apiKeyStorageMode?: ApiKeyStorageMode; promptNotes?: string; backupRetentionDays?: number }) {
     await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1019,6 +1035,80 @@ function ApplicationShell() {
     }
   }
 
+  async function loadServerBackups() {
+    try {
+      const response = await fetch('/api/backups');
+      if (!response.ok) return;
+      const data = await response.json() as { backups?: ServerBackup[]; retentionDays?: number };
+      setServerBackups(Array.isArray(data.backups) ? data.backups : []);
+      if (typeof data.retentionDays === 'number') {
+        setBackupRetentionDays(data.retentionDays);
+        setBackupRetentionMode(data.retentionDays === 30 ? '30' : data.retentionDays === 90 ? '90' : 'custom');
+      }
+    } catch {
+      // Server backups are optional.
+    }
+  }
+
+  async function createServerBackup() {
+    setIsBackupWorking(true);
+    setBackupStatusType('loading');
+    setBackupStatus('Server-Backup wird im persistenten Backup-Ordner erstellt ...');
+    try {
+      const response = await fetch('/api/backups', { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? 'Server-Backup konnte nicht erstellt werden.');
+      }
+      const data = await response.json() as { backups?: ServerBackup[] };
+      setServerBackups(Array.isArray(data.backups) ? data.backups : []);
+      setBackupStatusType('success');
+      setBackupStatus('Server-Backup wurde erstellt.');
+    } catch (error) {
+      setBackupStatusType('error');
+      setBackupStatus(error instanceof Error ? error.message : 'Server-Backup konnte nicht erstellt werden.');
+    } finally {
+      setIsBackupWorking(false);
+    }
+  }
+
+  async function restoreServerBackup(fileName: string) {
+    if (!window.confirm(`Backup „${fileName}“ wirklich einspielen? Aktuelle Daten werden überschrieben.`)) return;
+    setIsBackupWorking(true);
+    setBackupStatusType('loading');
+    setBackupStatus(`Server-Backup „${fileName}“ wird wiederhergestellt ...`);
+    try {
+      const response = await fetch(`/api/backups/${encodeURIComponent(fileName)}/restore`, { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? 'Server-Backup konnte nicht wiederhergestellt werden.');
+      }
+      await Promise.all([loadSettings(), loadDocuments(), loadLetters(), loadApplications(), loadServerBackups()]);
+      setBackupStatusType('success');
+      setBackupStatus(`Server-Backup „${fileName}“ wurde wiederhergestellt.`);
+    } catch (error) {
+      setBackupStatusType('error');
+      setBackupStatus(error instanceof Error ? error.message : 'Server-Backup konnte nicht wiederhergestellt werden.');
+    } finally {
+      setIsBackupWorking(false);
+    }
+  }
+
+  async function updateBackupRetention(days: number) {
+    const normalizedDays = Math.min(3650, Math.max(1, Math.round(days || 30)));
+    setBackupRetentionDays(normalizedDays);
+    setBackupRetentionMode(normalizedDays === 30 ? '30' : normalizedDays === 90 ? '90' : 'custom');
+    try {
+      await saveSettings({ backupRetentionDays: normalizedDays });
+      await loadServerBackups();
+      setBackupStatusType('success');
+      setBackupStatus(`Backup-Aufbewahrung auf ${normalizedDays} Tage gesetzt.`);
+    } catch {
+      setBackupStatusType('error');
+      setBackupStatus('Backup-Aufbewahrung konnte nicht gespeichert werden.');
+    }
+  }
+
   async function restoreBackup(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1038,6 +1128,7 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'Backup konnte nicht eingespielt werden.');
       }
       await Promise.all([loadSettings(), loadDocuments(), loadLetters(), loadApplications()]);
+      await loadServerBackups();
       setBackupStatusType('success');
       setBackupStatus(`Backup „${file.name}“ wurde erfolgreich wiederhergestellt.`);
     } catch (error) {
@@ -1629,10 +1720,62 @@ function ApplicationShell() {
                 {isBackupWorking ? <RefreshCw size={18} /> : <Download size={18} />}
                 {isBackupWorking ? 'Bitte warten ...' : 'Backup herunterladen'}
               </button>
+              <button type="button" className="button secondary" onClick={createServerBackup} disabled={isBackupWorking}>
+                <Save size={18} /> Server-Backup erstellen
+              </button>
               <button type="button" className="button secondary" onClick={() => backupInputRef.current?.click()} disabled={isBackupWorking}>
                 <FileUp size={18} /> Backup einspielen
               </button>
               <input ref={backupInputRef} type="file" accept="application/json,.json" onChange={restoreBackup} className="visually-hidden" />
+            </div>
+            <div className="backup-retention-grid">
+              <label>
+                Aufbewahrung
+                <select value={backupRetentionMode} onChange={(event) => {
+                  const value = event.target.value as '30' | '90' | 'custom';
+                  setBackupRetentionMode(value);
+                  if (value === '30') void updateBackupRetention(30);
+                  if (value === '90') void updateBackupRetention(90);
+                }}>
+                  <option value="30">30 Tage</option>
+                  <option value="90">90 Tage</option>
+                  <option value="custom">Freie Anzahl Tage</option>
+                </select>
+              </label>
+              {backupRetentionMode === 'custom' && (
+                <label>
+                  Tage
+                  <input
+                    type="number"
+                    min="1"
+                    max="3650"
+                    value={backupRetentionDays}
+                    onChange={(event) => setBackupRetentionDays(Number(event.target.value))}
+                    onBlur={() => updateBackupRetention(backupRetentionDays)}
+                  />
+                </label>
+              )}
+              <button type="button" className="text-button" onClick={loadServerBackups}>Backup-Liste aktualisieren</button>
+            </div>
+            <div className="server-backup-list">
+              <strong>Server-Backups</strong>
+              {serverBackups.length === 0 ? (
+                <p className="field-note">Noch kein Server-Backup vorhanden.</p>
+              ) : (
+                <ul>
+                  {serverBackups.slice(0, 8).map((backup) => (
+                    <li key={backup.fileName}>
+                      <span>
+                        <strong>{backup.kind === 'auto' ? 'Automatisch' : 'Manuell'}</strong>
+                        {new Date(backup.createdAt).toLocaleString('de-DE')} · {formatFileSize(backup.size)}
+                      </span>
+                      <button type="button" className="text-button" onClick={() => restoreServerBackup(backup.fileName)} disabled={isBackupWorking}>
+                        Wiederherstellen
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             </div>
           </details>
