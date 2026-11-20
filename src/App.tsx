@@ -1216,13 +1216,13 @@ function ApplicationShell() {
               <strong>{hasJobInput ? matchedRequirementCount : '–'}</strong>
               <small>{hasJobInput ? 'mit deinen Qualifikationen' : `${profileEvidence.length} Profilpunkte bereit`}</small>
             </article>
-            <article className={!hasJobInput ? 'score-neutral' : matchingPercent >= 60 ? 'score-good' : matchingPercent >= 35 ? 'score-medium' : 'score-low'}>
+            <article className={!hasJobInput ? 'score-neutral' : profileEvidence.length === 0 ? 'score-medium' : matchingPercent >= 60 ? 'score-good' : matchingPercent >= 35 ? 'score-medium' : 'score-low'}>
               <span>Matching</span>
-              <strong>{hasJobInput ? `${matchingPercent}%` : '–'}</strong>
+              <strong>{hasJobInput ? (profileEvidence.length === 0 ? 'Kein Profil' : `${matchingPercent}%`) : '–'}</strong>
               <div className="matching-progress" aria-hidden="true">
-                <span style={{ width: hasJobInput ? `${matchingPercent}%` : '0%' }} />
+                <span style={{ width: hasJobInput && profileEvidence.length > 0 ? `${matchingPercent}%` : '0%' }} />
               </div>
-              <small>{hasJobInput ? `${profileEvidence.length} Profilpunkte verfügbar` : 'noch keine Auswertung'}</small>
+              <small>{hasJobInput ? (profileEvidence.length === 0 ? '⚠️ Unterlagen im Profil fehlen' : `${profileEvidence.length} Profilpunkte verfügbar`) : 'noch keine Auswertung'}</small>
             </article>
           </div>
           <details className="analysis-details" open={hasJobInput}>
@@ -1956,6 +1956,25 @@ function TextField({ label, value, onChange, onFocus }: { label: string; value: 
   );
 }
 
+function formatSalutation(contact: string): string {
+  if (!contact) return 'Sehr geehrte Damen und Herren,';
+  const trimmed = contact.trim();
+  if (/^herr\s+/i.test(trimmed)) {
+    return `Sehr geehrter ${trimmed},`;
+  }
+  if (/^frau\s+/i.test(trimmed)) {
+    return `Sehr geehrte ${trimmed},`;
+  }
+  const parts = trimmed.split(/\s+/);
+  if (parts.length >= 2) {
+    const firstName = parts[0].toLowerCase();
+    const lastName = parts.slice(1).join(' ');
+    const isLikelyFemale = /[ae]$/i.test(firstName) && !['luca', 'andrea', 'sascha'].includes(firstName);
+    return isLikelyFemale ? `Sehr geehrte Frau ${lastName},` : `Sehr geehrter Herr ${lastName},`;
+  }
+  return `Sehr geehrte(r) Frau/Herr ${trimmed},`;
+}
+
 function extractJobDetails(input: string): JobDetails {
   const text = input.trim();
   const url = extractUrl(text);
@@ -1971,7 +1990,7 @@ function extractJobDetails(input: string): JobDetails {
     contact,
     address: extractAddress(text),
     subject: title ? `Bewerbung als ${title}` : 'Bewerbung',
-    salutation: contact ? `Sehr geehrte${contact.toLowerCase().includes('herr') ? 'r' : ''} ${contact.replace(/^(frau|herr)\s+/i, '')},` : 'Sehr geehrte Damen und Herren,',
+    salutation: formatSalutation(contact),
     company: companyFromText || companyFromUrl,
     title,
     source,
@@ -2107,17 +2126,17 @@ function getProfileEvidence(profile: ProfileData) {
 function createMatchItems(jobInput: string, profileEvidence: string[]) {
   const normalizedJob = jobInput.toLowerCase();
   const requirementGroups = [
-    { label: 'Qualität / QS', terms: ['qualität', 'quality', 'qs', 'qmb', 'audit', 'iso', 'vda'] },
-    { label: 'Führung / Verantwortung', terms: ['leitung', 'führung', 'team', 'verantwortung', 'lead', 'head'] },
-    { label: 'Prozesse / Verbesserung', terms: ['prozess', 'lean', 'kaizen', 'kvp', 'optimierung', 'continuous improvement'] },
-    { label: 'Zahlen / Steuerung', terms: ['controlling', 'kennzahlen', 'kpi', 'reporting', 'analyse'] },
-    { label: 'IT / Tools', terms: ['sap', 'excel', 'power bi', 'digital', 'system', 'erp', 'caq', 'crm', 'ms office'] },
-    { label: 'Konkrete Praxisbeispiele', terms: ['audit', 'reklamation', 'fmea', '8d', 'standard', 'dokumentation', 'prüfung', 'maßnahme'] },
+    { label: 'Prozesse / Lean / CI', terms: ['prozess', 'lean', 'kaizen', 'kvp', 'optimierung', 'continuous improvement', '5s', 'smed', 'gemba', 'a3', 'oee', 'six sigma', 'shopfloor', 'wertstrom', 'change agent'] },
+    { label: 'Qualität / QS / Audits', terms: ['qualität', 'quality', 'qs', 'qmb', 'audit', 'iso', 'vda', 'iatf', 'sop', 'standard'] },
+    { label: 'Führung / Projektleitung', terms: ['leitung', 'führung', 'team', 'verantwortung', 'lead', 'head', 'projektmanagement', 'projektleitung', 'projektteam'] },
+    { label: 'Zahlen / Controlling / Reporting', terms: ['controlling', 'kennzahlen', 'kpi', 'reporting', 'analyse', 'business intelligence', 'bi'] },
+    { label: 'IT / Systeme / Tools', terms: ['sap', 'excel', 'power bi', 'digital', 'digitalisierung', 'system', 'erp', 'caq', 'crm', 'ms office'] },
+    { label: 'Methoden & Umsetzung', terms: ['audit', 'reklamation', 'fmea', '8d', 'standard', 'dokumentation', 'prüfung', 'maßnahme', 'schulung', 'workshop', 'psm'] },
   ];
 
   return requirementGroups
     .filter((group) => group.terms.some((term) => normalizedJob.includes(term)))
-    .slice(0, 5)
+    .slice(0, 6)
     .map((group) => ({
       requirement: group.label,
       matches: profileEvidence.filter((item) => group.terms.some((term) => item.toLowerCase().includes(term))).slice(0, 3),
@@ -2506,33 +2525,71 @@ function extractJobSource(text: string, url: string) {
 
 function extractCompany(text: string) {
   const primaryText = getPrimaryJobText(text);
-  const lines = primaryText.split('\n').map((line) => line.trim()).filter(Boolean);
-  const labelMatch = primaryText.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([^\n]{3,90})/i)?.[1];
-  if (labelMatch) return cleanRecipientValue(labelMatch);
   const normalized = primaryText.replace(/\s+/g, ' ');
-  const employerLabelMatch = normalized.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80})(?:\s+Standort|\s+Kontakt|\s+Ihre|\s+Deine|\s+Aufgaben|$)/i)?.[1];
-  if (employerLabelMatch) return cleanRecipientValue(employerLabelMatch);
-  const teilkonzernMatch = normalized.match(/Teilkonzern:\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})(?:\s+Start:|\s+Bewerber|\s+Das sind|\s+Standort:)/i)?.[1];
-  if (teilkonzernMatch) return cleanRecipientValue(teilkonzernMatch);
-  const companyDetailsMatch = normalized.match(/Unternehmens-Details\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})(?:\s+Mess|\s+Maschinen|\s+Automotive|\s+Nürnberg|\s+Deutschland|\s+Ähnliche Jobs)/i)?.[1];
-  if (companyDetailsMatch) return cleanRecipientValue(companyDetailsMatch);
-  const introMatch = normalized.match(/\bBei\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,70})\s+(?:verbinden|entwickeln|arbeiten|stehen|setzen)\s+wir\b/i)?.[1];
-  if (introMatch) return cleanRecipientValue(introMatch);
-  const employerMatch = normalized.match(/(?:Arbeitgeber|Unternehmen)\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/i)?.[1];
-  if (employerMatch) return cleanRecipientValue(employerMatch);
-  const legalMatch = primaryText.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
-  if (legalMatch) return cleanRecipientValue(legalMatch);
-  const aboutIndex = lines.findIndex((line) => /über uns|unternehmen|wer wir sind/i.test(line));
-  if (aboutIndex >= 0 && lines[aboutIndex + 1] && !/stellen|job|bewerbung|kontakt/i.test(lines[aboutIndex + 1])) {
+
+  // 1. Ausdrückliche Beschriftung "Unternehmen: / Firma: / Arbeitgeber:"
+  const labelMatch = primaryText.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([^\n]{2,80})/i)?.[1];
+  if (labelMatch) {
+    const val = cleanRecipientValue(labelMatch.replace(/\s*(?:Standort|Kontakt|Aufgaben):?.*$/i, ''));
+    if (val.length >= 2 && !/^(wir|das|ein|uns|ihr)\b/i.test(val)) return val;
+  }
+
+  // 2. URL-Parameter wie ?company=mondiag oder ?company=mustergmbh
+  const urlCompanyMatch = text.match(/[?&]company=([a-z0-9_-]+)/i)?.[1];
+  if (urlCompanyMatch) {
+    let name = urlCompanyMatch;
+    if (name.toLowerCase().endsWith('ag')) name = `${name.slice(0, -2)} AG`;
+    else if (name.toLowerCase().endsWith('gmbh')) name = `${name.slice(0, -4)} GmbH`;
+    return cleanRecipientValue(name.charAt(0).toUpperCase() + name.slice(1));
+  }
+
+  // 3. Echte Rechtsform im Text (z. B. Mondi AG, Siemens AG, etc.)
+  const legalMatch = primaryText.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{1,60}\s(?:GmbH(?:\s*&\s*Co\.?\s*KG)?|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
+  if (legalMatch && !/^(das|die|ihr|uns|wir)\b/i.test(legalMatch.trim())) {
+    return cleanRecipientValue(legalMatch);
+  }
+
+  // 4. "Erfolg von [Firma]" oder "Team von [Firma]" oder "bei [Firma] in [Ort]"
+  const vonMatch = normalized.match(/(?:Erfolg|Zukunft|Wachstum|Team|Mitarbeitenden)\s+von\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,40})/)?.[1];
+  if (vonMatch) {
+    const candidate = cleanRecipientValue(vonMatch.replace(/[,.;].*$/, ''));
+    if (!/^(uns|unserem|unserer|den|dem|denen)\b/i.test(candidate)) return candidate;
+  }
+  const xingCompany = normalized.match(/bei\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80})\s+in\s+[A-ZÄÖÜ]/)?.[1];
+  if (xingCompany) return cleanRecipientValue(xingCompany);
+
+  // 5. Echte kurze Überschrift "Über uns" / "Das Unternehmen" gefolgt von Firmenname
+  const lines = primaryText.split('\n').map((line) => line.trim()).filter(Boolean);
+  const aboutIndex = lines.findIndex((line) => line.length < 35 && /^(?:über uns|das unternehmen|unser unternehmen|wer wir sind|about us)\s*:?$/i.test(line));
+  if (aboutIndex >= 0 && lines[aboutIndex + 1] && lines[aboutIndex + 1].length < 70 && !/^(wir|sie|uns|stellen|job|aufgaben|beitrag)/i.test(lines[aboutIndex + 1])) {
     return cleanRecipientValue(lines[aboutIndex + 1]);
   }
+
   return '';
 }
 
 function extractContact(text: string) {
-  return text.match(/(?:Ansprechpartner(?:in)?|Kontakt|Recruiter(?:in)?|Personal)\s*[:-]\s*((?:Frau|Herr)?\s*[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2})/i)?.[1]?.trim()
-    || text.match(/\b(Frau|Herr)\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2}/)?.[0]
-    || '';
+  const stopWords = /^(wir|ihr|sie|unsere|uns|das|die|der|ein|eine|bei|mit|fuer|für|nach|ihre|deine|diese|alle|fragen|bewerbung)\b/i;
+
+  // 1. "wenden Sie sich gerne an [Name]" oder "Fragen... an [Name]" oder "Kontaktperson ist [Name]"
+  const turnToMatch = text.match(/(?:wenden\s+Sie\s+sich(?:\s+gerne)?\s+an|Fragen\s+.*?an|Kontakt(?:person)?(?:\s+ist)?)\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,2})/i);
+  if (turnToMatch && !stopWords.test(turnToMatch[1].trim())) {
+    return cleanRecipientValue(turnToMatch[1]);
+  }
+
+  // 2. Explizite Anrede: Frau / Herr [Name]
+  const salutationMatch = text.match(/\b(Frau|Herr)\s+([A-ZÄÖÜ][a-zäöüß-]+(?:\s+[A-ZÄÖÜ][a-zäöüß-]+){1,2})/);
+  if (salutationMatch) {
+    return `${salutationMatch[1]} ${salutationMatch[2]}`.trim();
+  }
+
+  // 3. Zeile mit "Kontakt:" direkt gefolgt von einem Namen auf derselben Zeile
+  const sameLineContact = text.match(/(?:Ansprechpartner(?:in)?|Kontakt|Recruiter(?:in)?|Personal)\s*[:-]\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,2})(?:\r?\n|$)/);
+  if (sameLineContact && !stopWords.test(sameLineContact[1].trim())) {
+    return cleanRecipientValue(sameLineContact[1]);
+  }
+
+  return '';
 }
 
 function extractAddress(text: string) {

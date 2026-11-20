@@ -42,7 +42,10 @@ update_repository() {
   allow_git_directory
   git -C "${APP_DIR}" fetch origin "${BRANCH}"
   git -C "${APP_DIR}" checkout "${BRANCH}"
-  git -C "${APP_DIR}" pull --ff-only origin "${BRANCH}"
+  git -C "${APP_DIR}" pull --ff-only origin "${BRANCH}" 2>/dev/null || {
+    warn "Fast-Forward nicht möglich (z. B. nach Bereinigung der Git-Historie). Setze Arbeitsstand auf origin/${BRANCH} zurück ..."
+    git -C "${APP_DIR}" reset --hard "origin/${BRANCH}"
+  }
   if [[ "${APP_ONLY}" != true ]]; then
     chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DIR}"
   fi

@@ -1281,6 +1281,7 @@ Regeln:
 - Keine komma-getrennten Qualifikationslisten im Haupttext.
 - Kopiere keine langen Rohtext-Passagen aus Lebenslauf, Zeugnissen oder Profil.
 - Wenn Angaben aus der Stellenanzeige verlangt werden (z. B. Wunschgehalt, Eintrittstermin, Referenznummer), füge sie als Platzhalter mit XXX ein.
+- ECHTE FIRMA & ANSPRECHPARTNER ERKENNEN: Analysiere die Stellenanzeige eigenständig auf den tatsächlichen Firmennamen (Arbeitgeber) und den konkreten Ansprechpartner (z. B. nach "wenden Sie sich an...", "Fragen an...", "Ansprechpartner" suchen). Verwende NIEMALS Aufgaben, Floskeln oder Satzfragmente (wie "Wir streben nach...", "Beitrag zur...") als Firmenname oder Ansprechpartner. Falls kein Name erkennbar ist, nutze die neutrale Anrede "Sehr geehrte Damen und Herren," und "XXX Unternehmen".
 - Wenn Firma, Ansprechpartner oder Adresse unbekannt sind, nutze neutrale Platzhalter mit XXX statt Jobbörsen-Namen wie Xing, LinkedIn oder StepStone.
 - Jobbörsen wie Xing, LinkedIn, StepStone oder Indeed dürfen als Quelle genannt werden, aber niemals als Arbeitgeber oder Empfänger.
 - ${sourceInstruction}
@@ -1379,21 +1380,59 @@ function extractServerJobTitle(text, url = '') {
 function extractServerCompany(text) {
   const primaryText = getPrimaryJobText(text);
   const normalized = normalizeText(primaryText);
+
   const labelMatch = normalized.match(/(?:Unternehmen|Firma|Arbeitgeber|Company)\s*[:-]\s*([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80})(?:\s+Standort|\s+Kontakt|\s+Ihre|\s+Deine|\s+Aufgaben|$)/i)?.[1];
-  if (labelMatch) return cleanServerCompany(labelMatch);
+  if (labelMatch) {
+    const candidate = cleanServerCompany(labelMatch);
+    if (!/^(wir|das|ein|uns|ihr)\b/i.test(candidate)) return candidate;
+  }
+
+  const urlCompanyMatch = text.match(/[?&]company=([a-z0-9_-]+)/i)?.[1];
+  if (urlCompanyMatch) {
+    let name = urlCompanyMatch;
+    if (name.toLowerCase().endsWith('ag')) name = `${name.slice(0, -2)} AG`;
+    else if (name.toLowerCase().endsWith('gmbh')) name = `${name.slice(0, -4)} GmbH`;
+    return cleanServerCompany(name.charAt(0).toUpperCase() + name.slice(1));
+  }
+
+  const legalMatch = normalized.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH(?:\s*&\s*Co\.?\s*KG)?|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
+  if (legalMatch && !/^(das|die|ihr|uns|wir)\b/i.test(legalMatch.trim())) return cleanServerCompany(legalMatch);
+
+  const vonMatch = normalized.match(/(?:Erfolg|Zukunft|Wachstum|Team|Mitarbeitenden)\s+von\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,40})/)?.[1];
+  if (vonMatch) {
+    const candidate = cleanServerCompany(vonMatch.replace(/[,.;].*$/, ''));
+    if (!/^(uns|unserem|unserer|den|dem|denen)\b/i.test(candidate)) return candidate;
+  }
+
   const xingCompany = normalized.match(/bei\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80})\s+in\s+[A-ZÄÖÜ]/)?.[1];
   if (xingCompany) return cleanServerCompany(xingCompany);
+
   const employerMatch = normalized.match(/(?:Arbeitgeber|Unternehmen)\s+([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/i)?.[1];
   if (employerMatch) return cleanServerCompany(employerMatch);
-  const legalMatch = normalized.match(/([A-ZÄÖÜ][\wÄÖÜäöüß&.,' -]{2,80}\s(?:GmbH|AG|SE|KG|OHG|UG|e\.V\.|Group|Holding|Ltd\.?|Inc\.?))/)?.[1];
-  return legalMatch ? cleanServerCompany(legalMatch) : '';
+
+  return '';
 }
 
 function extractServerContact(text) {
   const primaryText = getPrimaryJobText(text);
-  return primaryText.match(/(?:Ansprechpartner(?:in)?|Kontakt|Recruiter(?:in)?|Personal)\s*[:-]\s*((?:Frau|Herr)?\s*[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2})/i)?.[1]?.trim()
-    || primaryText.match(/\b(Frau|Herr)\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+){0,2}/)?.[0]
-    || '';
+  const stopWords = /^(wir|ihr|sie|unsere|uns|das|die|der|ein|eine|bei|mit|fuer|für|nach|ihre|deine|diese|alle|fragen|bewerbung)\b/i;
+
+  const turnToMatch = primaryText.match(/(?:wenden\s+Sie\s+sich(?:\s+gerne)?\s+an|Fragen\s+.*?an|Kontakt(?:person)?(?:\s+ist)?)\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,2})/i);
+  if (turnToMatch && !stopWords.test(turnToMatch[1].trim())) {
+    return cleanServerCompany(turnToMatch[1]);
+  }
+
+  const salutationMatch = primaryText.match(/\b(Frau|Herr)\s+([A-ZÄÖÜ][a-zäöüß-]+(?:\s+[A-ZÄÖÜ][a-zäöüß-]+){1,2})/);
+  if (salutationMatch) {
+    return `${salutationMatch[1]} ${salutationMatch[2]}`.trim();
+  }
+
+  const sameLineContact = primaryText.match(/(?:Ansprechpartner(?:in)?|Kontakt|Recruiter(?:in)?|Personal)\s*[:-]\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+){1,2})(?:\r?\n|$)/);
+  if (sameLineContact && !stopWords.test(sameLineContact[1].trim())) {
+    return cleanServerCompany(sameLineContact[1]);
+  }
+
+  return '';
 }
 
 function extractServerAddress(text) {
