@@ -389,15 +389,26 @@ function ApplicationShell() {
   }
 
   function updatePersonalData(field: keyof PersonalData, value: string) {
-    setPersonalDataForm((current) => ({ ...current, [field]: value }));
+    setPersonalDataForm((current) => {
+      const next = { ...current, [field]: value };
+      if (field === 'name' && (!current.closingName || current.closingName === current.name || current.closingName === 'Max Mustermann')) {
+        next.closingName = value;
+      }
+      return next;
+    });
     setIsPersonalDataDirty(true);
     setPersonalDataStatus('Noch nicht gespeichert.');
   }
 
   async function savePersonalData() {
     try {
-      await saveSettings({ personalData: personalDataForm });
-      setPersonalData(personalDataForm);
+      const toSave = { ...personalDataForm };
+      if (toSave.name && (!toSave.closingName || toSave.closingName === 'Max Mustermann')) {
+        toSave.closingName = toSave.name;
+      }
+      await saveSettings({ personalData: toSave });
+      setPersonalData(toSave);
+      setPersonalDataForm(toSave);
       setIsPersonalDataDirty(false);
       setPersonalDataStatus('Stammdaten gespeichert.');
     } catch {
@@ -599,7 +610,7 @@ function ApplicationShell() {
       const nextDraft = stabilizeGeneratedLetter(
         cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile })),
         resolvedJobDetails,
-        personalData.location,
+        personalData,
       );
       setDraft(nextDraft);
       if (data.warning) {
@@ -647,7 +658,7 @@ function ApplicationShell() {
       const data = await response.json() as { candidates: AiCandidate[] };
       const cleanedCandidates = (data.candidates ?? []).map((candidate) => ({
         ...candidate,
-        text: stabilizeGeneratedLetter(cleanGeneratedLetter(candidate.text), resolvedJobDetails, personalData.location),
+        text: stabilizeGeneratedLetter(cleanGeneratedLetter(candidate.text), resolvedJobDetails, personalData),
       })).map((candidate) => {
         if (!candidate.ok || !candidate.text) return candidate;
         const evaluation = evaluateCandidate(candidate.text, resolvedJobDetails, profileEvidence);
@@ -706,7 +717,7 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'KI-Überarbeitung fehlgeschlagen.');
       }
       const data = await response.json() as { text: string };
-      const nextDraft = stabilizeGeneratedLetter(cleanGeneratedLetter(data.text || draft), jobDetails, personalData.location);
+      const nextDraft = stabilizeGeneratedLetter(cleanGeneratedLetter(data.text || draft), jobDetails, personalData);
       setDraft(nextDraft);
       setActiveLetterId(null);
       setCostEstimate(estimateAiCost(provider, draft, nextDraft));
@@ -2042,7 +2053,7 @@ function createDraft({ personalData, jobDetails, profile }: { personalData: Pers
     '',
     'Mit freundlichen Grüßen',
     '',
-    personalData.closingName || personalData.name,
+    getSignatureName(personalData),
   ].filter((line) => line !== undefined).join('\n');
 }
 
@@ -2390,11 +2401,46 @@ function stabilizeDateLine(text: string, location: string = '') {
   return text;
 }
 
-function stabilizeGeneratedLetter(text: string, jobDetails: JobDetails, location: string = '') {
+function getSignatureName(personalData?: Partial<PersonalData> | null): string {
+  if (!personalData) return 'Max Mustermann';
+  const name = String(personalData.name || '').trim();
+  const closing = String(personalData.closingName || '').trim();
+  if (closing && closing !== 'Max Mustermann') return closing;
+  if (name && name !== 'Max Mustermann') return name;
+  return closing || name || 'Max Mustermann';
+}
+
+function stabilizeClosingFormula(text: string, signatureName: string) {
+  if (!text || !signatureName) return text;
+  const lines = text.split('\n');
+  const closingIndex = lines.findIndex((line) => /^(?:mit freundlichen grüßen|freundliche grüße|viele grüße|beste grüße)\b/i.test(line.trim()));
+  if (closingIndex === -1) return text;
+
+  let nameIndex = -1;
+  for (let i = closingIndex + 1; i < lines.length; i++) {
+    if (lines[i].trim().length > 0) {
+      nameIndex = i;
+      break;
+    }
+  }
+
+  if (nameIndex !== -1) {
+    lines[nameIndex] = signatureName;
+    return lines.slice(0, nameIndex + 1).join('\n');
+  }
+
+  lines.push('', signatureName);
+  return lines.join('\n');
+}
+
+function stabilizeGeneratedLetter(text: string, jobDetails: JobDetails, personalData?: Partial<PersonalData> | null) {
+  const location = personalData?.location || '';
+  const signatureName = getSignatureName(personalData);
   const withRecipient = stabilizeRecipientBlock(text, jobDetails);
   const withDate = stabilizeDateLine(withRecipient, location);
   const withSubject = stabilizeSubjectLine(withDate, jobDetails);
-  return stabilizeIntroParagraph(withSubject, jobDetails);
+  const withIntro = stabilizeIntroParagraph(withSubject, jobDetails);
+  return stabilizeClosingFormula(withIntro, signatureName);
 }
 
 function stabilizeRecipientBlock(text: string, jobDetails: JobDetails) {

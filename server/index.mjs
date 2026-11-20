@@ -148,8 +148,16 @@ app.get('/api/profile', async (_request, response, next) => {
 app.get('/api/settings', (_request, response, next) => {
   try {
     const apiKeys = getApiKeyMap();
+    let personalData = getSetting('personalData', null);
+    if (personalData && typeof personalData === 'object') {
+      const name = String(personalData.name || '').trim();
+      const closing = String(personalData.closingName || '').trim();
+      if (name && (!closing || closing === 'Max Mustermann')) {
+        personalData = { ...personalData, closingName: name };
+      }
+    }
     response.json({
-      personalData: getSetting('personalData', null),
+      personalData,
       provider: getSetting('provider', null),
       voice: getSetting('voice', null),
       googleClientId: getSetting('googleClientId', null),
@@ -208,7 +216,15 @@ app.post('/api/update', async (_request, response) => {
 app.put('/api/settings', (request, response, next) => {
   try {
     if ('personalData' in request.body) {
-      setSetting('personalData', request.body.personalData);
+      let data = request.body.personalData;
+      if (data && typeof data === 'object') {
+        const name = String(data.name || '').trim();
+        const closing = String(data.closingName || '').trim();
+        if (name && (!closing || closing === 'Max Mustermann')) {
+          data.closingName = name;
+        }
+      }
+      setSetting('personalData', data);
     }
     if ('provider' in request.body) {
       setSetting('provider', request.body.provider);
@@ -598,7 +614,7 @@ app.post('/api/generate-letter', async (request, response, next) => {
 
     try {
       const text = ensureSubstantialLetter({
-        text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt })), jobDetails, request.body.personalData?.location),
+        text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt })), jobDetails, request.body.personalData),
         personalData: request.body.personalData,
         jobDetails,
         jobInput: request.body.jobInput,
@@ -678,7 +694,7 @@ app.post(['/api/compare-letter', '/compare-letter'], async (request, response, n
           ? requestApiKey
           : getProviderApiKey(candidateProvider);
         const text = ensureSubstantialLetter({
-          text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider: candidateProvider, apiKey, prompt })), jobDetails, request.body.personalData?.location),
+          text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider: candidateProvider, apiKey, prompt })), jobDetails, request.body.personalData),
           personalData: request.body.personalData,
           jobDetails,
           jobInput: request.body.jobInput,
@@ -1261,6 +1277,15 @@ async function fetchJobPosting(url) {
   };
 }
 
+function getSignatureName(personalData) {
+  if (!personalData) return 'Max Mustermann';
+  const name = String(personalData.name || '').trim();
+  const closing = String(personalData.closingName || '').trim();
+  if (closing && closing !== 'Max Mustermann') return closing;
+  if (name && name !== 'Max Mustermann') return name;
+  return closing || name || 'Max Mustermann';
+}
+
 function buildAiPrompt({ personalData, jobInput, jobDetails, voice, promptNotes, profile }) {
   const profileContext = buildProfileContext(profile);
   const templateInstruction = getTemplateInstruction(voice);
@@ -1271,6 +1296,7 @@ function buildAiPrompt({ personalData, jobInput, jobDetails, voice, promptNotes,
     : 'Wenn keine Quelle erkennbar ist, erwähne keine Jobbörse.';
   const today = new Intl.DateTimeFormat('de-DE').format(new Date());
   const location = personalData?.location || 'XXX Ort';
+  const signatureName = getSignatureName(personalData);
   return `
 Du bist ein erfahrener deutscher Bewerbungscoach. Erstelle ein überzeugendes, konkretes Anschreiben als editierbaren Entwurf.
 
@@ -1303,7 +1329,8 @@ Regeln:
 - Schlussformel exakt:
 Mit freundlichen Grüßen
 
-${personalData?.closingName || personalData?.name || 'XXX'}
+${signatureName}
+- Der Name nach "Mit freundlichen Grüßen" MUSS IMMER EXAKT "${signatureName}" lauten. Verwende niemals "Max Mustermann", es sei denn der Name in den Absenderdaten lautet ausdrücklich so.
 - Gib nur den fertigen Anschreiben-Text zurück, keine Erklärung.
 - Schreibe niemals Meta-Sätze wie "Der gewünschte Stil ist", "Relevant aus meiner Datenbasis", "Bitte diesen Entwurf prüfen", "Ausgelesene Unterlagen", "Strukturierte Profilanalyse", "An der Stelle erkenne ich" oder Hinweise über diesen Prompt.
 
@@ -1516,27 +1543,55 @@ function stabilizeDateLine(text, location = '') {
   return text;
 }
 
-function stabilizeGeneratedLetter(text, jobDetails, location = '') {
-  if (!text) return text;
-  const withDate = stabilizeDateLine(text, location);
-  if (!jobDetails?.subject || jobDetails.subject === 'Bewerbung') return withDate;
-  const lines = withDate.split('\n');
-  const subjectIndex = lines.findIndex((line) => /^bewerbung\b/i.test(line.trim()));
-  if (subjectIndex !== -1) {
-    lines[subjectIndex] = jobDetails.subject;
-  }
-  const salutationIndex = lines.findIndex((line) => /^(sehr geehrte|guten tag)/i.test(line.trim()));
-  const introIndex = lines.findIndex((line, index) => index > salutationIndex && line.trim());
-  if (introIndex !== -1 && jobDetails.title) {
-    const intro = lines[introIndex].toLowerCase();
-    if (!intro.includes(jobDetails.title.toLowerCase()) || (jobDetails.company && !intro.includes(jobDetails.company.toLowerCase()))) {
-      const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
-      const titleReference = ` für die Position ${jobDetails.title}`;
-      const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
-      lines[introIndex] = `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie Qualitätssicherung, Prozessverständnis und pragmatische Verbesserungsarbeit sinnvoll verbindet. Genau in diesem Umfeld arbeite ich gern: Anforderungen sauber aufnehmen, Standards verständlich machen und Verbesserungen so umsetzen, dass sie im Alltag tragen.`;
+function stabilizeClosingFormula(text, signatureName) {
+  if (!text || !signatureName) return text;
+  const lines = text.split('\n');
+  const closingIndex = lines.findIndex((line) => /^(?:mit freundlichen grüßen|freundliche grüße|viele grüße|beste grüße)\b/i.test(line.trim()));
+  if (closingIndex === -1) return text;
+
+  let nameIndex = -1;
+  for (let i = closingIndex + 1; i < lines.length; i++) {
+    if (lines[i].trim().length > 0) {
+      nameIndex = i;
+      break;
     }
   }
+
+  if (nameIndex !== -1) {
+    lines[nameIndex] = signatureName;
+    return lines.slice(0, nameIndex + 1).join('\n');
+  }
+
+  lines.push('', signatureName);
   return lines.join('\n');
+}
+
+function stabilizeGeneratedLetter(text, jobDetails, personalData = null) {
+  if (!text) return text;
+  const location = personalData?.location || '';
+  const signatureName = getSignatureName(personalData);
+  const withDate = stabilizeDateLine(text, location);
+  let result = withDate;
+  if (jobDetails?.subject && jobDetails.subject !== 'Bewerbung') {
+    const lines = result.split('\n');
+    const subjectIndex = lines.findIndex((line) => /^bewerbung\b/i.test(line.trim()));
+    if (subjectIndex !== -1) {
+      lines[subjectIndex] = jobDetails.subject;
+    }
+    const salutationIndex = lines.findIndex((line) => /^(sehr geehrte|guten tag)/i.test(line.trim()));
+    const introIndex = lines.findIndex((line, index) => index > salutationIndex && line.trim());
+    if (introIndex !== -1 && jobDetails.title) {
+      const intro = lines[introIndex].toLowerCase();
+      if (!intro.includes(jobDetails.title.toLowerCase()) || (jobDetails.company && !intro.includes(jobDetails.company.toLowerCase()))) {
+        const sourceReference = jobDetails.source ? ` auf ${jobDetails.source}` : '';
+        const titleReference = ` für die Position ${jobDetails.title}`;
+        const companyReference = jobDetails.company ? ` bei ${jobDetails.company}` : '';
+        lines[introIndex] = `Ihre Ausschreibung${sourceReference}${titleReference}${companyReference} hat mein Interesse geweckt, weil sie Qualitätssicherung, Prozessverständnis und pragmatische Verbesserungsarbeit sinnvoll verbindet. Genau in diesem Umfeld arbeite ich gern: Anforderungen sauber aufnehmen, Standards verständlich machen und Verbesserungen so umsetzen, dass sie im Alltag tragen.`;
+      }
+    }
+    result = lines.join('\n');
+  }
+  return stabilizeClosingFormula(result, signatureName);
 }
 
 function ensureSubstantialLetter({ text, personalData, jobDetails, jobInput, profile }) {
@@ -1628,7 +1683,7 @@ function createServerDraft({ personalData = {}, jobDetails, jobInput = '', profi
     '',
     'Mit freundlichen Grüßen',
     '',
-    personalData.closingName || personalData.name || 'XXX',
+    getSignatureName(personalData),
   ].filter((line) => line !== undefined).join('\n');
 }
 
