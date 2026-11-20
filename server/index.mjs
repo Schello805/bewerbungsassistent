@@ -598,7 +598,7 @@ app.post('/api/generate-letter', async (request, response, next) => {
 
     try {
       const text = ensureSubstantialLetter({
-        text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt })), jobDetails),
+        text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider, apiKey, prompt })), jobDetails, request.body.personalData?.location),
         personalData: request.body.personalData,
         jobDetails,
         jobInput: request.body.jobInput,
@@ -678,7 +678,7 @@ app.post(['/api/compare-letter', '/compare-letter'], async (request, response, n
           ? requestApiKey
           : getProviderApiKey(candidateProvider);
         const text = ensureSubstantialLetter({
-          text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider: candidateProvider, apiKey, prompt })), jobDetails),
+          text: stabilizeGeneratedLetter(cleanGeneratedLetter(await generateWithProvider({ provider: candidateProvider, apiKey, prompt })), jobDetails, request.body.personalData?.location),
           personalData: request.body.personalData,
           jobDetails,
           jobInput: request.body.jobInput,
@@ -1269,12 +1269,15 @@ function buildAiPrompt({ personalData, jobInput, jobDetails, voice, promptNotes,
   const sourceInstruction = source
     ? `Der Einstieg muss natürlich erwähnen, dass die Ausschreibung auf ${source} gefunden wurde. Beispielhaft: "Ihre Ausschreibung auf ${source} ..." oder eleganter.`
     : 'Wenn keine Quelle erkennbar ist, erwähne keine Jobbörse.';
+  const today = new Intl.DateTimeFormat('de-DE').format(new Date());
+  const location = personalData?.location || 'XXX Ort';
   return `
 Du bist ein erfahrener deutscher Bewerbungscoach. Erstelle ein überzeugendes, konkretes Anschreiben als editierbaren Entwurf.
 
 Regeln:
 - Schreibe auf Deutsch.
 - Verwende die Absenderdaten, Empfängerblock, Datum, Betreff, Anrede und Schlussformel.
+- Datum: Verwende IMMER das heutige Datum (${today}), formatiert als "${location}, ${today}". Setze niemals ein veraltetes oder anderes Datum ein.
 - Nutze konkrete Informationen aus Lebenslauf/Unterlagen, aber erfinde keine Arbeitgeber oder Zahlen.
 - Verwende Profilinformationen niemals als rohe Keyword-Liste.
 - Schreibe niemals Sätze wie "Besonders relevant sind für mich A, B, C". Profilbelege müssen in natürliche, begründete Sätze eingebettet werden.
@@ -1484,9 +1487,40 @@ function cleanServerCompany(value) {
     .trim();
 }
 
-function stabilizeGeneratedLetter(text, jobDetails) {
-  if (!text || !jobDetails?.subject || jobDetails.subject === 'Bewerbung') return text;
+function stabilizeDateLine(text, location = '') {
+  if (!text) return text;
+  const today = new Intl.DateTimeFormat('de-DE').format(new Date());
   const lines = text.split('\n');
+  const subjectIndex = lines.findIndex((line) => /^bewerbung\b/i.test(line.trim()));
+  const searchLimit = subjectIndex !== -1 ? subjectIndex : lines.length;
+
+  const dateLineIndex = lines.findIndex((line, index) => {
+    if (index >= searchLimit) return false;
+    return /\b(?:\d{1,2}\.\d{1,2}\.\d{4}|\d{1,2}\.\s*(?:Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s*\d{4}|\[Datum\]|TT\.MM\.JJJJ)\b/i.test(line);
+  });
+
+  if (dateLineIndex !== -1) {
+    const existingLine = lines[dateLineIndex].trim();
+    const locMatch = existingLine.match(/^([^,]+),\s*(?:den\s*)?/i);
+    const loc = locMatch ? locMatch[1].trim() : (location || '');
+    lines[dateLineIndex] = loc ? `${loc}, ${today}` : today;
+    return lines.join('\n');
+  }
+
+  if (subjectIndex !== -1) {
+    const loc = location ? `${location}, ` : '';
+    lines.splice(subjectIndex, 0, `${loc}${today}`, '');
+    return lines.join('\n');
+  }
+
+  return text;
+}
+
+function stabilizeGeneratedLetter(text, jobDetails, location = '') {
+  if (!text) return text;
+  const withDate = stabilizeDateLine(text, location);
+  if (!jobDetails?.subject || jobDetails.subject === 'Bewerbung') return withDate;
+  const lines = withDate.split('\n');
   const subjectIndex = lines.findIndex((line) => /^bewerbung\b/i.test(line.trim()));
   if (subjectIndex !== -1) {
     lines[subjectIndex] = jobDetails.subject;

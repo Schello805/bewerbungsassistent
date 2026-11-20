@@ -599,6 +599,7 @@ function ApplicationShell() {
       const nextDraft = stabilizeGeneratedLetter(
         cleanGeneratedLetter(data.text || createDraft({ personalData, jobDetails: resolvedJobDetails, profile })),
         resolvedJobDetails,
+        personalData.location,
       );
       setDraft(nextDraft);
       if (data.warning) {
@@ -646,7 +647,7 @@ function ApplicationShell() {
       const data = await response.json() as { candidates: AiCandidate[] };
       const cleanedCandidates = (data.candidates ?? []).map((candidate) => ({
         ...candidate,
-        text: stabilizeGeneratedLetter(cleanGeneratedLetter(candidate.text), resolvedJobDetails),
+        text: stabilizeGeneratedLetter(cleanGeneratedLetter(candidate.text), resolvedJobDetails, personalData.location),
       })).map((candidate) => {
         if (!candidate.ok || !candidate.text) return candidate;
         const evaluation = evaluateCandidate(candidate.text, resolvedJobDetails, profileEvidence);
@@ -705,7 +706,7 @@ function ApplicationShell() {
         throw new Error(data.error ?? 'KI-Überarbeitung fehlgeschlagen.');
       }
       const data = await response.json() as { text: string };
-      const nextDraft = cleanGeneratedLetter(data.text || draft);
+      const nextDraft = stabilizeGeneratedLetter(cleanGeneratedLetter(data.text || draft), jobDetails, personalData.location);
       setDraft(nextDraft);
       setActiveLetterId(null);
       setCostEstimate(estimateAiCost(provider, draft, nextDraft));
@@ -2361,8 +2362,39 @@ function cleanGeneratedLetter(text: string) {
   return normalizeLetterParagraphs(cleaned);
 }
 
-function stabilizeGeneratedLetter(text: string, jobDetails: JobDetails) {
-  return stabilizeIntroParagraph(stabilizeSubjectLine(stabilizeRecipientBlock(text, jobDetails), jobDetails), jobDetails);
+function stabilizeDateLine(text: string, location: string = '') {
+  const today = new Intl.DateTimeFormat('de-DE').format(new Date());
+  const lines = text.split('\n');
+  const subjectIndex = lines.findIndex((line) => /^bewerbung\b/i.test(line.trim()));
+  const searchLimit = subjectIndex !== -1 ? subjectIndex : lines.length;
+
+  const dateLineIndex = lines.findIndex((line, index) => {
+    if (index >= searchLimit) return false;
+    return /\b(?:\d{1,2}\.\d{1,2}\.\d{4}|\d{1,2}\.\s*(?:Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s*\d{4}|\[Datum\]|TT\.MM\.JJJJ)\b/i.test(line);
+  });
+
+  if (dateLineIndex !== -1) {
+    const existingLine = lines[dateLineIndex].trim();
+    const locMatch = existingLine.match(/^([^,]+),\s*(?:den\s*)?/i);
+    const loc = locMatch ? locMatch[1].trim() : (location || '');
+    lines[dateLineIndex] = loc ? `${loc}, ${today}` : today;
+    return lines.join('\n');
+  }
+
+  if (subjectIndex !== -1) {
+    const loc = location ? `${location}, ` : '';
+    lines.splice(subjectIndex, 0, `${loc}${today}`, '');
+    return lines.join('\n');
+  }
+
+  return text;
+}
+
+function stabilizeGeneratedLetter(text: string, jobDetails: JobDetails, location: string = '') {
+  const withRecipient = stabilizeRecipientBlock(text, jobDetails);
+  const withDate = stabilizeDateLine(withRecipient, location);
+  const withSubject = stabilizeSubjectLine(withDate, jobDetails);
+  return stabilizeIntroParagraph(withSubject, jobDetails);
 }
 
 function stabilizeRecipientBlock(text: string, jobDetails: JobDetails) {
@@ -2782,13 +2814,20 @@ function replaceRecipientPlaceholders(text: string, recipient: RecipientDraft) {
   ].filter(Boolean);
 
   if (separatorIndex !== -1 && dateIndex !== -1 && dateIndex > separatorIndex) {
+    const today = new Intl.DateTimeFormat('de-DE').format(new Date());
+    const existingDateLine = lines[dateIndex].trim();
+    const locMatch = existingDateLine.match(/^([^,]+),\s*(?:den\s*)?/i);
+    const loc = locMatch ? locMatch[1].trim() : '';
+    const updatedLines = [...lines];
+    updatedLines[dateIndex] = loc ? `${loc}, ${today}` : today;
+
     return [
-      ...lines.slice(0, separatorIndex + 1),
+      ...updatedLines.slice(0, separatorIndex + 1),
       '',
       ...recipientBlock,
       '',
       '',
-      ...lines.slice(dateIndex),
+      ...updatedLines.slice(dateIndex),
     ].join('\n').replace(/\n{4,}/g, '\n\n\n').trim();
   }
 
