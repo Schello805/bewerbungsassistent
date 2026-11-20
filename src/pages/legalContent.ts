@@ -3,7 +3,7 @@ export const legalPages = {
     title: 'Impressum',
     intro: 'Platzhalter für die Anbieterkennzeichnung. Bitte vor Veröffentlichung mit deinen echten Angaben ersetzen.',
     sections: [
-      { heading: 'Angaben gemäß § 5 TMG', body: 'Max Mustermann, Anschrift bitte ergänzen.' },
+      { heading: 'Angaben gemäß § 5 TMG', body: 'Vor- und Nachname bzw. Betreiber, Anschrift bitte ergänzen.' },
       { heading: 'Kontakt', body: 'E-Mail-Adresse und weitere Kontaktmöglichkeiten bitte ergänzen.' },
       { heading: 'Haftungshinweis', body: 'Die App unterstützt beim Entwurf von Bewerbungstexten. Inhalte müssen vor Verwendung eigenverantwortlich geprüft werden.' },
     ],

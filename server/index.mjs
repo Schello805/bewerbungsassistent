@@ -2032,8 +2032,7 @@ function extractProfileExamples(text) {
 
 function cleanProfileExampleSentence(value) {
   const cleaned = normalizeText(value)
-    .replace(/\bHerr\s+Mustermann\b/gi, 'ich')
-    .replace(/\bMax\s+Mustermann\b/gi, 'ich')
+    .replace(/\b(?:Herr|Frau)\s+[A-ZÄÖÜ][\wÄÖÜäöüß-]+\b/gi, 'ich')
     .replace(/\s+/g, ' ')
     .trim();
   const words = cleaned.split(/\s+/).filter(Boolean);
@@ -2050,7 +2049,7 @@ function cleanDocumentProfilePoint(fileName) {
   return path.basename(fileName)
     .replace(/\.[a-z0-9]+$/i, '')
     .replace(/[_-]+/g, ' ')
-    .replace(/\b(?:Max|Mustermann|Zertifikat|Certificate|Coursera)\b/gi, '')
+    .replace(/\b(?:Zertifikat|Certificate|Coursera)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -2070,7 +2069,7 @@ function isConciseProfilePoint(value) {
   const words = value.split(/\s+/).filter(Boolean);
   if (value.length > 80 || words.length > 8) return false;
   if (/[.!?]/.test(value)) return false;
-  if (/\b(?:herr|frau)\s+mustermann\b/i.test(value)) return false;
+  if (/\b(?:herr|frau)\s+[a-zäöüß-]+\b/i.test(value)) return false;
   if (/\b(?:übernahm|überwachte|forderte|erstellte|absolvierte|durchlaufen|vorgesetzter|mietvertrag|versicherungsschutz|rufbereitschaft|ansprechpartner)\b/i.test(value)) return false;
   if (/^\d+$/.test(value)) return false;
   return true;

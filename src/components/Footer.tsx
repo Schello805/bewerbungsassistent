@@ -193,7 +193,7 @@ export function Footer() {
         <div>
           <strong>Bewerbungsassistent</strong>
           <p>
-            Open Source von Max Mustermann · Version v{version} · Rev. {revision}
+            Open Source · Version v{version} · Rev. {revision}
           </p>
         </div>
         <nav aria-label="Rechtliche Links">

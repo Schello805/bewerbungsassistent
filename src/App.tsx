@@ -137,7 +137,7 @@ const applicationStatuses: ApplicationStatus[] = ['Entwurf', 'Versendet', 'Zwisc
 
 const defaultPersonalData: PersonalData = {
   name: 'Max Mustermann',
-  qualification: 'staatl. gepr. Betriebswirt',
+  qualification: 'Musterqualifikation',
   email: 'max.mustermann@example.com',
   phone: '0123-4567890',
   street: 'Musterstraße 1',
@@ -1934,7 +1934,7 @@ function isCleanProfilePoint(value: string) {
   const words = value.trim().split(/\s+/).filter(Boolean);
   if (!value.trim() || value.length > 90 || words.length > 9) return false;
   if (/[.!?]/.test(value)) return false;
-  if (/\b(?:herr|frau)\s+mustermann\b/i.test(value)) return false;
+  if (/\b(?:herr|frau)\s+[a-zäöüß-]+\b/i.test(value)) return false;
   if (/\b(?:übernahm|überwachte|forderte|erstellte|absolvierte|vorgesetzter|mietvertrag|versicherungsschutz|rufbereitschaft|ansprechpartner)\b/i.test(value)) return false;
   return true;
 }
@@ -1942,7 +1942,7 @@ function isCleanProfilePoint(value: string) {
 function isCleanProfileExample(value: string) {
   const words = value.trim().split(/\s+/).filter(Boolean);
   if (!value.trim() || value.length > 180 || words.length > 28) return false;
-  if (/\b(?:herr|frau)\s+mustermann\b/i.test(value)) return false;
+  if (/\b(?:herr|frau)\s+[a-zäöüß-]+\b/i.test(value)) return false;
   if (/\b(?:mietvertrag|versicherungsschutz|rufbereitschaft|vorgesetzter|beurteilender)\b/i.test(value)) return false;
   return true;
 }
@@ -2065,7 +2065,7 @@ function createQualityExperienceSentence(terms: string[]) {
 
 function getCleanProfileEvidence(profile: ProfileData) {
   const rawValues = getProfileEvidence(profile);
-  const blocked = new Set(['max', 'mustermann', 'herr', 'frau', 'musterstadt', 'musterstadt', 'befriedigend', 'fachschule', 'dokument', 'pdf']);
+  const blocked = new Set(['herr', 'frau', 'befriedigend', 'fachschule', 'dokument', 'pdf', 'mustermann']);
   return rawValues
     .map((value) => value.trim())
     .filter((value) => value.length >= 3 && !blocked.has(value.toLowerCase()))
